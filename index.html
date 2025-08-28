@@ -47,7 +47,38 @@
       <div class="container section-header">
         <h2>Trending Manga</h2>
       </div>
+      <div class="container filters" id="filters">
+        <div class="filter">
+          <label for="filter-type">Type</label>
+          <select id="filter-type" onchange="applyFilters()">
+            <option value="all" selected>All</option>
+            <option value="manga">Manga</option>
+            <option value="manhwa">Manhwa</option>
+            <option value="manhua">Manhua</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-lang">Language</label>
+          <select id="filter-lang" onchange="applyFilters()">
+            <option value="all" selected>All</option>
+            <option value="en">English</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-rating">Min Rating</label>
+          <input type="range" id="filter-rating" min="0" max="10" step="1" value="0" oninput="updateRatingLabel(this.value)" onchange="applyFilters()" />
+          <span id="filter-rating-value">0</span>
+        </div>
+        <div class="filter">
+          <label for="filter-genre">Genre</label>
+          <input type="text" id="filter-genre" placeholder="e.g. action" oninput="debouncedApplyFilters()" />
+        </div>
+      </div>
       <div class="container scroller" id="manga-list"></div>
+      <div class="container load-more-row"><button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button></div>
     </section>
 
     <section class="section" id="updates">
@@ -56,6 +87,7 @@
         <p class="muted">Recently updated chapters</p>
       </div>
       <div class="container grid" id="updates-list"></div>
+      <div class="container load-more-row"><button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button></div>
     </section>
   </main>
 
