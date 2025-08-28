@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MangaVerse - Read Manga & Manhwa Online</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    /* ==========================================================================
+       MangaVerse — Manga/Manhwa Streaming Theme
+       ========================================================================== */
+    :root {
+      --bg: #0e0e10;
+      --panel: #161618;
+      --muted: #bdbdbd;
+      --muted-2: #9b9b9b;
+      --accent: #ff6b9a;
+      --accent-2: #ff7a5a;
+      --glass-border: rgba(255,255,255,0.03);
+      --card-shadow: 0 8px 30px rgba(2,2,6,0.6);
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --max-width: 1100px;
+      --transition: 180ms cubic-bezier(.2,.9,.2,1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html, body { height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg, #070708 0%, var(--bg) 100%);
+      color: #fff;
+      line-height: 1.45;
+    }
+
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* Navbar */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(4px);
+      gap: 12px;
+    }
+
+    .navbar img { height: 44px; width: auto; display: block; user-select: none; }
+    .nav-links { display: flex; align-items: center; gap: 12px; }
+
+    .nav-links a {
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-weight: 600;
+      transition: background var(--transition), color var(--transition), transform var(--transition);
+    }
+    .nav-links a:hover, .nav-links a:focus {
+      background: rgba(255,255,255,0.03);
+      outline: none;
+      transform: translateY(-2px);
+    }
+
+    .search-bar {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.04);
+      background: rgba(255,255,255,0.02);
+      color: #fff;
+      min-width: 180px;
+      transition: box-shadow var(--transition), transform var(--transition);
+    }
+    .search-bar::placeholder { color: var(--muted-2); }
+    .search-bar:focus {
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+      outline: 2px solid rgba(255,107,154,0.14);
+      transform: translateY(-2px);
+    }
+
+    /* Banner */
+    .banner {
+      height: clamp(28vh, 50vh, 60vh);
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      padding: 28px 16px;
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .banner::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5,5,5,0.45) 10%, rgba(5,5,5,0.55) 70%);
+      pointer-events: none;
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+    .banner h1 {
+      z-index: 2;
+      color: #fff;
+      font-size: clamp(1.4rem, 3.6vw, 2.6rem);
+      max-width: 95%;
+      background: rgba(0,0,0,0.35);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      display: inline-block;
+      letter-spacing: -0.3px;
+    }
+
+    /* Rows & Lists */
+    .row { margin: 18px 0; padding: 0 16px; }
+    .row h2 { margin: 6px 0 12px 0; font-size: 1.05rem; color: #fff; font-weight: 700; }
+
+    .list {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .list::-webkit-scrollbar { height: 10px; }
+    .list::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.06);
+      border-radius: 999px;
+      border: 2px solid rgba(0,0,0,0.12);
+    }
+
+    .manga-card {
+      width: 150px;
+      flex: 0 0 auto;
+      cursor: pointer;
+      transition: transform var(--transition);
+    }
+    .manga-card:hover { transform: translateY(-6px) scale(1.03); }
+    .manga-card img {
+      width: 100%;
+      height: 225px;
+      object-fit: cover;
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+    }
+    .manga-card h3 {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .manga-card p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Modal */
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.75);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 60;
+      padding: 20px;
+    }
+    .modal-content {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      padding: 20px;
+      width: 100%;
+      max-width: 980px;
+      max-height: 92vh;
+      overflow-y: auto;
+      position: relative;
+      text-align: left;
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+    }
+    .modal-body {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 14px;
+    }
+    .modal-body img {
+      width: 100%;
+      border-radius: 8px;
+      object-fit: cover;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+    }
+    .modal-text { text-align: left; }
+    .modal-text h2 { font-size: 1.2rem; margin-bottom: 6px; }
+    .modal-text p { color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .close {
+      position: absolute;
+      top: 12px; right: 18px;
+      cursor: pointer;
+      font-size: 22px;
+      color: #fff;
+      background: transparent;
+      border-radius: 6px;
+      padding: 4px 8px;
+    }
+
+    /* Chapters List */
+    .chapters-list {
+      margin-top: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .chapter-item {
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .chapter-item:hover { background: rgba(255,255,255,0.03); }
+    .chapter-item a {
+      color: #fff;
+      text-decoration: none;
+      flex-grow: 1;
+    }
+    .chapter-item .date {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    /* Search Modal */
+    .search-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: flex-start;
+      flex-direction: column;
+      z-index: 80;
+      padding: 40px 16px;
+    }
+    .search-modal .close {
+      position: absolute;
+      top: 18px; right: 28px;
+      font-size: 28px;
+      color: #ff6b9a;
+      cursor: pointer;
+    }
+    .search-modal input {
+      width: 420px;
+      max-width: calc(100% - 40px);
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.04);
+      background: rgba(255,255,255,0.02);
+      color: #fff;
+      font-size: 1rem;
+      margin: 12px auto;
+    }
+    .search-results {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      justify-items: center;
+      width: 100%;
+      max-width: var(--max-width);
+      margin: 12px auto;
+      padding-bottom: 20px;
+    }
+    .search-results .manga-card {
+      width: 120px;
+    }
+    .search-results .manga-card img {
+      height: 180px;
+    }
+
+    /* Footer */
+    .footer {
+      background: linear-gradient(180deg, rgba(0,0,0,0.03), rgba(255,255,255,0.01));
+      color: #ccc;
+      padding: 18px 0;
+      margin-top: 36px;
+      border-top: 1px solid rgba(255,255,255,0.02);
+    }
+    .footer-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+    }
+    .footer-copy {
+      flex: 1 1 auto;
+      margin: 0;
+      font-size: 0.95rem;
+      text-align: left;
+      color: #cfcfcf;
+    }
+    .footer-links {
+      display: flex;
+      gap: 12px;
+      flex: 1 1 auto;
+      justify-content: space-evenly;
+      align-items: center;
+    }
+    .footer-links a {
+      flex: 1 1 0;
+      display: inline-block;
+      text-align: center;
+      padding: 8px 6px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      border-radius: 8px;
+      transition: background var(--transition), color var(--transition), transform var(--transition);
+    }
+    .footer-links a:hover, .footer-links a:focus {
+      background: rgba(255,107,154,0.06);
+      color: #fff;
+      transform: translateY(-2px);
+      outline: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .modal-body { grid-template-columns: 1fr; }
+      .modal-body img { width: 40%; margin: 0 auto; }
+      .modal-content { padding: 16px; max-width: 92vw; }
+    }
+    @media (max-width: 720px) {
+      .navbar { padding: 10px 12px; gap: 8px; }
+      .manga-card { width: 130px; }
+      .manga-card img { height: 195px; }
+    }
+    @media (max-width: 520px) {
+      .manga-card { width: 110px; }
+      .manga-card img { height: 165px; }
+      .search-results .manga-card { width: 100px; }
+      .search-results .manga-card img { height: 150px; }
+    }
+
+    /* Loading Animation */
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 200px;
+    }
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      border-top: 4px solid var(--accent);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 24px;">📚</span>
+      <span style="font-weight: bold; font-size: 1.2rem;">MangaVerse</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <input type="text" class="search-bar" placeholder="Search manga..." onfocus="openSearchModal()" />
+    </div>
+  </div>
+
+  <div class="banner" id="banner">
+    <h1 id="banner-title">Discover Amazing Manga & Manhwa</h1>
+  </div>
+
+  <div class="row">
+    <h2>Popular Manga</h2>
+    <div class="list" id="popular-list">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <h2>Latest Updates</h2>
+    <div class="list" id="latest-list">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <h2>Top Manhwa</h2>
+    <div class="list" id="manhwa-list">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for manga details -->
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()" style="color: red;">&times;</span>
+      <div class="modal-body">
+        <img id="modal-image" src="" alt="" />
+        <div class="modal-text">
+          <h2 id="modal-title"></h2>
+          <p id="modal-description"></p>
+          <p id="modal-status"></p>
+          <p id="modal-chapters"></p>
+        </div>
+      </div>
+      <div class="chapters-list" id="chapters-list"></div>
+    </div>
+  </div>
+
+  <!-- Search modal -->
+  <div class="search-modal" id="search-modal">
+    <span class="close" onclick="closeSearchModal()" style="color: red;">&times;</span>
+    <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
+    <div class="search-results" id="search-results"></div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <p class="footer-copy">&copy; 2025 MangaVerse. All rights reserved.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/disclaimer.html">Disclaimer</a>
+        <a href="/about.html">About Us</a>
+        <a href="https://mangadex.org" target="_blank" rel="noopener">MangaDex</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // API configuration
+    const MANGA_DEX_API = 'https://api.mangadex.org';
+    let currentManga = null;
+
+    // Fetch trending manga from MangaDex
+    async function fetchTrendingManga() {
+      try {
+        // Fetch popular manga (sorted by rating)
+        const response = await fetch(`${MANGA_DEX_API}/manga?limit=15&includes[]=cover_art&order[rating]=desc`);
+        const data = await response.json();
+        return data.data;
+      } catch (error) {
+        console.error('Error fetching trending manga:', error);
+        return [];
+      }
+    }
+
+    // Fetch latest updated manga
+    async function fetchLatestManga() {
+      try {
+        const response = await fetch(`${MANGA_DEX_API}/manga?limit=15&includes[]=cover_art&order[latestUploadedChapter]=desc`);
+        const data = await response.json();
+        return data.data;
+      } catch (error) {
+        console.error('Error fetching latest manga:', error);
+        return [];
+      }
+    }
+
+    // Fetch manhwa (Korean comics)
+    async function fetchManhwa() {
+      try {
+        const response = await fetch(`${MANGA_DEX_API}/manga?limit=15&includes[]=cover_art&originalLanguage[]=ko&order[rating]=desc`);
+        const data = await response.json();
+        return data.data;
+      } catch (error) {
+        console.error('Error fetching manhwa:', error);
+        return [];
+      }
+    }
+
+    // Get cover image URL
+    function getCoverUrl(manga, size = '256') {
+      if (!manga.relationships) return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjM4NCIgdmlld0JveD0iMCAwIDI1NiAzODQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjI1NiIgaGVpZ2h0PSIzODQiIGZpbGw9IiMyQjJCMkIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzhBOEE4QSIgZm9udC1zaXplPSIyNCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiPk5vIENvdmVyPC90ZXh0Pjwvc3ZnPg==';
+      
+      const coverArt = manga.relationships.find(rel => rel.type === 'cover_art');
+      if (!coverArt) return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjM4NCIgdmlld0JveD0iMCAwIDI1NiAzODQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjI1NiIgaGVpZ2h0PSIzODQiIGZpbGw9IiMyQjJCMkIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzhBOEE4QSIgZm9udC1zaXplPSIyNCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiPk5vIENvdmVyPC90ZXh0Pjwvc3ZnPg==';
+      
+      const fileName = coverArt.attributes.fileName;
+      return `https://uploads.mangadex.org/covers/${manga.id}/${fileName}.${size}.jpg`;
+    }
+
+    // Display manga list
+    function displayMangaList(mangaList, containerId) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      
+      mangaList.forEach(manga => {
+        const title = manga.attributes.title.en || 
+                     Object.values(manga.attributes.title)[0] || 
+                     'Unknown Title';
+        
+        const card = document.createElement('div');
+        card.className = 'manga-card';
+        card.onclick = () => showMangaDetails(manga);
+        
+        card.innerHTML = `
+          <img src="${getCoverUrl(manga)}" alt="${title}" />
+          <h3>${title}</h3>
+          <p>${manga.attributes.status || 'Unknown'} • ${manga.attributes.year || 'Unknown'}</p>
+        `;
+        
+        container.appendChild(card);
+      });
+    }
+
+    // Show manga details in modal
+    async function showMangaDetails(manga) {
+      currentManga = manga;
+      const title = manga.attributes.title.en || Object.values(manga.attributes.title)[0] || 'Unknown Title';
+      const description = manga.attributes.description?.en || 'No description available.';
+      const status = manga.attributes.status ? manga.attributes.status.charAt(0).toUpperCase() + manga.attributes.status.slice(1) : 'Unknown';
+      
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-description').textContent = description;
+      document.getElementById('modal-status').textContent = `Status: ${status}`;
+      document.getElementById('modal-image').src = getCoverUrl(manga, '512');
+      
+      // Fetch and display chapters
+      try {
+        const chaptersResponse = await fetch(`${MANGA_DEX_API}/manga/${manga.id}/feed?translatedLanguage[]=en&order[chapter]=desc&limit=20`);
+        const chaptersData = await chaptersResponse.json();
+        
+        const chaptersList = document.getElementById('chapters-list');
+        chaptersList.innerHTML = '<h3>Latest Chapters</h3>';
+        
+        if (chaptersData.data && chaptersData.data.length > 0) {
+          document.getElementById('modal-chapters').textContent = `Chapters: ${chaptersData.total || 'Unknown'}`;
+          
+          chaptersData.data.forEach(chapter => {
+            const chapterNum = chapter.attributes.chapter;
+            const title = chapter.attributes.title || `Chapter ${chapterNum}`;
+            const date = new Date(chapter.attributes.publishAt || chapter.attributes.createdAt).toLocaleDateString();
+            
+            const chapterElement = document.createElement('div');
+            chapterElement.className = 'chapter-item';
+            chapterElement.innerHTML = `
+              <a href="https://mangadex.org/chapter/${chapter.id}" target="_blank">${title}</a>
+              <span class="date">${date}</span>
+            `;
+            
+            chaptersList.appendChild(chapterElement);
+          });
+        } else {
+          chaptersList.innerHTML += '<p>No chapters available</p>';
+        }
+      } catch (error) {
+        console.error('Error fetching chapters:', error);
+        document.getElementById('chapters-list').innerHTML = '<p>Error loading chapters</p>';
+      }
+      
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    // Open search modal
+    function openSearchModal() {
+      document.getElementById('search-modal').style.display = 'flex';
+      document.getElementById('search-input').focus();
+    }
+
+    // Close search modal
+    function closeSearchModal() {
+      document.getElementById('search-modal').style.display = 'none';
+      document.getElementById('search-results').innerHTML = '';
+    }
+
+    // Search manga
+    async function searchManga() {
+      const query = document.getElementById('search-input').value;
+      if (!query.trim()) {
+        document.getElementById('search-results').innerHTML = '';
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${MANGA_DEX_API}/manga?title=${encodeURIComponent(query)}&includes[]=cover_art&limit=20`);
+        const data = await response.json();
+        
+        const container = document.getElementById('search-results');
+        container.innerHTML = '';
+        
+        if (data.data && data.data.length > 0) {
+          data.data.forEach(manga => {
+            const title = manga.attributes.title.en || 
+                         Object.values(manga.attributes.title)[0] || 
+                         'Unknown Title';
+            
+            const card = document.createElement('div');
+            card.className = 'manga-card';
+            card.onclick = () => {
+              closeSearchModal();
+              showMangaDetails(manga);
+            };
+            
+            card.innerHTML = `
+              <img src="${getCoverUrl(manga)}" alt="${title}" />
+              <h3>${title}</h3>
+            `;
+            
+            container.appendChild(card);
+          });
+        } else {
+          container.innerHTML = '<p>No results found</p>';
+        }
+      } catch (error) {
+        console.error('Error searching manga:', error);
+        document.getElementById('search-results').innerHTML = '<p>Error searching manga</p>';
+      }
+    }
+
+    // Initialize the page
+    async function init() {
+      try {
+        const [popularManga, latestManga, manhwa] = await Promise.all([
+          fetchTrendingManga(),
+          fetchLatestManga(),
+          fetchManhwa()
+        ]);
+        
+        displayMangaList(popularManga, 'popular-list');
+        displayMangaList(latestManga, 'latest-list');
+        displayMangaList(manhwa, 'manhwa-list');
+      } catch (error) {
+        console.error('Error initializing page:', error);
+        
+        // Show error messages
+        ['popular-list', 'latest-list', 'manhwa-list'].forEach(id => {
+          document.getElementById(id).innerHTML = '<p>Error loading content. Please try again later.</p>';
+        });
+      }
+    }
+
+    // Close modals when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('modal');
+      const searchModal = document.getElementById('search-modal');
+      
+      if (event.target === modal) {
+        closeModal();
+      }
+      
+      if (event.target === searchModal) {
+        closeSearchModal();
+      }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
