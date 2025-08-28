@@ -37,7 +37,9 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .muted{color:var(--muted)}
 
 /* Filters */
-.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:10px 0;justify-content:center}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:10px auto;justify-content:center;max-width:var(--max)}
+.filters .filter{min-width:140px}
+.filters .filter input[type="text"]{min-width:220px}
 .filter{display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.06);padding:10px;border-radius:12px}
 .filter label{font-weight:700;font-size:.9rem}
 .filter select,.filter input[type="text"],.filter input[type="range"]{background:rgba(255,255,255,.05);color:#fff;border:1px solid rgba(255,255,255,.08);padding:8px 10px;border-radius:10px}
