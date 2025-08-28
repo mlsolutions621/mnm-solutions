@@ -36,6 +36,13 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .section-header h2{font-size:1.1rem}
 .muted{color:var(--muted)}
 
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:10px 0}
+.filter{display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.06);padding:10px;border-radius:12px}
+.filter label{font-weight:700;font-size:.9rem}
+.filter select,.filter input[type="text"],.filter input[type="range"]{background:rgba(255,255,255,.05);color:#fff;border:1px solid rgba(255,255,255,.08);padding:8px 10px;border-radius:10px}
+.load-more-row{display:flex;justify-content:center;margin-top:10px}
+
 /* Scroller */
 .scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 0}
 .scroller::-webkit-scrollbar{height:10px}
