@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manga Solutions</title>
+
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <link rel="shortcut icon" href="/logo.png" />
+  <meta name="theme-color" content="#222222" />
+
+  <link rel="stylesheet" href="css/home.css">
+  <link rel="preload" href="css/home.css" as="style">
+  <link rel="preload" href="js/manga.js" as="script">
+  <script defer src="js/manga.js"></script>
+</head>
+
+<body>
+  <div class="navbar">
+    <a href="/"><img src="/logo.png" alt="Manga Solutions logo" /></a>
+    <div class="nav-links">
+      <a href="index.html">Movies</a>
+      <a href="manga.html" aria-current="page">Manga</a>
+      <input type="text" class="search-bar" placeholder="Search manga..." onfocus="openSearchModal()" />
+    </div>
+  </div>
+
+  <div class="banner" id="banner">
+    <h1 id="banner-title">Discover Trending Manga</h1>
+  </div>
+
+  <div class="row">
+    <h2>Trending Manga</h2>
+    <div class="list" id="manga-list"></div>
+  </div>
+
+  <!-- Reader Modal -->
+  <div class="modal" id="reader-modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeReader()" style="color: red;">&times;</span>
+
+      <div class="modal-body">
+        <img id="reader-cover" src="" alt="" />
+        <div class="modal-text">
+          <h2 id="reader-title"></h2>
+          <p id="reader-description" class="muted"></p>
+        </div>
+      </div>
+
+      <div class="modal-controls">
+        <div style="display:flex; gap:10px; align-items:center; flex: 1 1 300px;">
+          <label for="chapter">Chapter:</label>
+          <select id="chapter" onchange="changeChapter()"></select>
+          <label for="page">Page:</label>
+          <select id="page" onchange="changePage()"></select>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <img id="reader-image" src="" alt="Manga page" style="width:100%;max-height:80vh;object-fit:contain;border-radius:8px;background:#000"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search modal -->
+  <div class="search-modal" id="search-modal">
+    <span class="close" onclick="closeSearchModal()" style="color: red;">&times;</span>
+    <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
+    <div class="results" id="search-results"></div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p class="footer-copy">&copy; 2025 Manga-Solutions. All rights reserved.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/disclaimer.html">Disclaimer</a>
+        <a href="/about.html">About Us</a>
+        <a href="https://ko-fi.com/mlsolutions" target="_blank" rel="noopener">Buy Us a Coffee ☕</a>
+      </nav>
+    </div>
+  </footer>
+
+</body>
+</html>
+
