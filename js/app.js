@@ -1,4 +1,4 @@
-const MR_BASE = 'https://mangareader-api.vercel.app';
+const MR_BASE = 'https://mangareaderto-api.vercel.app/api/v1';
 
 let currentManga = null;
 let currentExternalUrl = '';
@@ -10,27 +10,37 @@ let trendingItems = [];
 let trendingNext = null;
 let featuredItems = [];
 let featuredNext = null;
+let searchNext = null;
+let isLoadingTrending = false;
+let isLoadingUpdates = false;
+let isLoadingSearch = false;
 
 async function apiGet(path){
-  const res = await fetch(`${MR_BASE}${path}`);
+  const base = MR_BASE.endsWith('/') ? MR_BASE.slice(0, -1) : MR_BASE;
+  const url = path.startsWith('http') ? path : `${base}${path}`;
+  const res = await fetch(url);
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 async function getTrending(){
-  const data = await apiGet('/api/v1/trending');
-  trendingNext = data.next || null;
-  return data.data || [];
+  const data = await apiGet('/trending');
+  return (data.data || data) || [];
 }
 
 async function getFeatured(){
-  const data = await apiGet('/api/v1/featured');
-  featuredNext = data.next || null;
-  return data.data || [];
+  const data = await apiGet('/latest-updates');
+  return (data.data || data) || [];
 }
 
-async function searchTitles(q){
-  const data = await apiGet(`/api/v1/search/${encodeURIComponent(q)}`);
+let searchPage = 1;
+let lastSearchQuery = '';
+async function searchTitles(q, page=1){
+  lastSearchQuery = q;
+  searchPage = page;
+  const data = await apiGet(`/search?keyword=${encodeURIComponent(q)}&page=${page}`);
+  // This API reports totalPages; compute next
+  searchNext = (data.totalPages && page < data.totalPages) ? `/search?keyword=${encodeURIComponent(q)}&page=${page+1}` : null;
   return data.data || [];
 }
 
@@ -49,8 +59,8 @@ function renderTrending(items){
   list.innerHTML='';
   items.forEach(m=>{
     const img=document.createElement('img');
-    img.src=m.cover; img.alt=m.title;
-    img.onclick=()=>openReaderBySlug(m.slug, m);
+    img.src=(m.cover || m.image) ; img.alt=(m.title || m.name);
+    img.onclick=()=>openReaderInfo(m.id || m.slug || m.url, m);
     list.appendChild(img);
   });
 }
@@ -62,52 +72,58 @@ function renderUpdates(items){
     const card=document.createElement('div');
     card.className='card';
     const img=document.createElement('img');
-    img.src=m.cover; img.alt=m.title;
-    img.onclick=()=>openReaderBySlug(m.slug, m);
+    img.src=(m.cover || m.image); img.alt=(m.title || m.name);
+    img.onclick=()=>openReaderInfo(m.id || m.slug || m.url, m);
     const meta=document.createElement('div'); meta.className='meta';
-    const title=document.createElement('div'); title.className='title'; title.textContent=m.title;
+    const title=document.createElement('div'); title.className='title'; title.textContent=(m.title || m.name);
     meta.appendChild(title);
     card.appendChild(img); card.appendChild(meta);
     grid.appendChild(card);
   });
 }
 
-async function openReaderBySlug(slug, fallback){
-  const d = await getDetails(slug);
-  currentManga = d;
-  document.getElementById('reader-cover').src = d.cover || fallback?.cover || '';
-  document.getElementById('reader-title').textContent = d.title || fallback?.title || '';
-  document.getElementById('reader-description').textContent = d.synopsis || '';
+async function getInfo(id){
+  return await apiGet(`/info/${encodeURIComponent(id)}`);
+}
 
-  // Populate chapters if provided (expects d.chapters as array with slug/number)
+async function getChapters(id){
+  return await apiGet(`/chapters/${encodeURIComponent(id)}`);
+}
+
+async function openReaderInfo(id, fallback){
+  const d = await getInfo(id);
+  currentManga = d;
+  document.getElementById('reader-cover').src = d.cover || fallback?.cover || fallback?.image || '';
+  document.getElementById('reader-title').textContent = d.title || fallback?.title || fallback?.name || '';
+  document.getElementById('reader-description').textContent = d.description || d.synopsis || '';
+
+  // Populate chapters via /chapters/:id
   const chapterSel = document.getElementById('chapter');
   const pageSel = document.getElementById('page');
   chapterSel.innerHTML = '';
   pageSel.innerHTML = '';
 
-  if (Array.isArray(d.chapters) && d.chapters.length) {
-    d.chapters.forEach(ch => {
-      const opt=document.createElement('option');
-      opt.value = ch.slug || ch.id || '';
-      opt.textContent = ch.number ? `Ch. ${ch.number}` : (ch.title || 'Chapter');
-      chapterSel.appendChild(opt);
-    });
-    const first = d.chapters[0];
-    if (first?.slug || first?.id) {
-      await loadChapterPages(first.slug || first.id);
-      chapterSel.value = first.slug || first.id;
-    }
-  } else {
-    // If chapters not available yet, clear stage
-    document.getElementById('reader-image').src = '';
+  const chs = await getChapters(d.id || id);
+  const chaptersArr = (chs.data || chs) || [];
+  chaptersArr.forEach(ch => {
+    const opt=document.createElement('option');
+    // Node API uses { chapterNumber, lang, id }
+    opt.value = JSON.stringify({ id: d.id || id, chapterNumber: ch.chapterNumber, lang: ch.lang || 'en' });
+    opt.textContent = `Ch. ${ch.chapterNumber} (${ch.lang || 'en'})`;
+    chapterSel.appendChild(opt);
+  });
+  if (chaptersArr.length) {
+    chapterSel.value = JSON.stringify({ id: d.id || id, chapterNumber: chaptersArr[0].chapterNumber, lang: chaptersArr[0].lang || 'en' });
+    const c = JSON.parse(chapterSel.value);
+    await loadChapterPagesNode(c.id, c.lang, c.chapterNumber);
   }
 
   document.getElementById('reader-modal').style.display = 'flex';
 }
 
-async function loadChapterPages(chSlug){
-  currentChapterSlug = chSlug;
-  currentPages = await getChapterPages(chSlug);
+async function loadChapterPagesNode(id, lang, chapterNumber){
+  const data = await apiGet(`/read/${encodeURIComponent(id)}/${encodeURIComponent(lang)}/${encodeURIComponent(chapterNumber)}`);
+  currentPages = (data.data || []).map(p => p.url);
   currentPageIndex = 0;
   const pageSel = document.getElementById('page');
   pageSel.innerHTML = '';
@@ -123,8 +139,10 @@ async function loadChapterPages(chSlug){
 }
 
 function changeChapter(){
-  const id=document.getElementById('chapter').value;
-  if (id) loadChapterPages(id);
+  const raw=document.getElementById('chapter').value;
+  if (!raw) return;
+  const c = JSON.parse(raw);
+  loadChapterPagesNode(c.id, c.lang, c.chapterNumber);
 }
 function changePage(){
   const idx=parseInt(document.getElementById('page').value||'0',10);
@@ -154,10 +172,29 @@ async function searchManga(){
   box.innerHTML='';
   items.forEach(m=>{
     const img=document.createElement('img');
-    img.src=m.cover; img.alt=m.title;
-    img.onclick=()=>{ closeSearchModal(); openReaderBySlug(m.slug, m); };
+    img.src=(m.cover||m.image); img.alt=(m.title||m.name||'');
+    img.onclick=()=>{ closeSearchModal(); openReaderInfo(m.id || m.slug || m.url, m); };
     box.appendChild(img);
   });
+  document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
+}
+
+async function loadMoreSearch(){
+  if (!searchNext || isLoadingSearch) return; isLoadingSearch = true;
+  const url = new URL(searchNext, MR_BASE);
+  const path = url.pathname + url.search;
+  const data = await apiGet(path);
+  searchNext = data.next || null;
+  const items = data.data || [];
+  const box=document.getElementById('search-results');
+  items.forEach(m=>{
+    const img=document.createElement('img');
+    img.src=(m.cover||m.image); img.alt=(m.title||m.name||'');
+    img.onclick=()=>{ closeSearchModal(); openReaderInfo(m.id || m.slug || m.url, m); };
+    box.appendChild(img);
+  });
+  document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
+  isLoadingSearch = false;
 }
 
 function openSearchModal(){ const m=document.getElementById('search-modal'); m.style.display='flex'; setTimeout(()=>document.getElementById('search-input').focus(),0); }
@@ -169,6 +206,9 @@ async function init(){
   featuredItems = f.slice();
   renderTrending(trendingItems);
   renderUpdates(featuredItems);
+  // attach infinite scroll observers
+  createObserver('sentinel-trending', loadMoreTrending);
+  createObserver('sentinel-updates', loadMoreUpdates);
 }
 
 init();
@@ -180,12 +220,14 @@ function applyFilters(){
   const type = document.getElementById('filter-type').value;
   const lang = document.getElementById('filter-lang').value;
   const minRating = parseInt(document.getElementById('filter-rating').value||'0',10);
-  const genreText = (document.getElementById('filter-genre').value||'').toLowerCase();
+  const genreRaw = (document.getElementById('filter-genre').value||'').toLowerCase();
+  const genreTerms = genreRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const sort = document.getElementById('filter-sort').value;
   const matches = (m)=>{
     const passType = (type==='all') || (m.type?.toLowerCase?.()===type);
     const passLang = (lang==='all') || (m.langs||[]).map(x=>String(x).toLowerCase()).includes(lang);
     const passRating = (typeof m.rating==='number') ? (m.rating>=minRating) : true;
-    const passGenre = !genreText || (m.genres||[]).some(g=>String(g).toLowerCase().includes(genreText));
+    const passGenre = genreTerms.length===0 || genreTerms.every(term => (m.genres||[]).some(g=>String(g).toLowerCase().includes(term)));
     return passType && passLang && passRating && passGenre;
   };
   const filtered = trendingItems.filter(matches);
@@ -196,24 +238,37 @@ let debounceTimer = null;
 function debouncedApplyFilters(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(applyFilters, 250); }
 
 async function loadMoreTrending(){
-  if (!trendingNext) return;
-  const url = new URL(trendingNext);
-  const path = url.pathname + url.search;
-  const data = await apiGet(path);
-  trendingNext = data.next || null;
+  if (isLoadingTrending) return; isLoadingTrending = true;
+  // For Node API, trending is not paginated; fall back to browse all
+  const type = document.getElementById('filter-type').value || 'all';
+  const sort = document.getElementById('filter-sort').value || 'default';
+  window._browsePage = (window._browsePage||1) + 1;
+  const query = type==='all' ? 'all' : type;
+  const data = await apiGet(`/all/${encodeURIComponent(query)}?sort=${encodeURIComponent(sort)}&page=${window._browsePage}`);
   const more = data.data || [];
   trendingItems = trendingItems.concat(more);
   applyFilters();
+  isLoadingTrending = false;
 }
 
 async function loadMoreUpdates(){
-  if (!featuredNext) return;
-  const url = new URL(featuredNext);
-  const path = url.pathname + url.search;
-  const data = await apiGet(path);
-  featuredNext = data.next || null;
+  if (isLoadingUpdates) return; isLoadingUpdates = true;
+  // For Node API, fallback to browse all page increment
+  window._updatesPage = (window._updatesPage||1) + 1;
+  const data = await apiGet(`/all/all?sort=latest&page=${window._updatesPage}`);
   const more = data.data || [];
   featuredItems = featuredItems.concat(more);
   renderUpdates(featuredItems);
+  isLoadingUpdates = false;
+}
+
+// Simple IntersectionObserver helper
+function createObserver(targetId, callback){
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{ if (entry.isIntersecting) callback(); });
+  });
+  io.observe(el);
 }
 
