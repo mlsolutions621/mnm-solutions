@@ -122,7 +122,9 @@ async function openReaderInfo(id, fallback){
 }
 
 async function loadChapterPagesNode(id, lang, chapterNumber){
-  const data = await apiGet(`/read/${encodeURIComponent(id)}/${encodeURIComponent(lang)}/${encodeURIComponent(chapterNumber)}`);
+  // default to English if none
+  const useLang = lang || 'en';
+  const data = await apiGet(`/read/${encodeURIComponent(id)}/${encodeURIComponent(useLang)}/${encodeURIComponent(chapterNumber)}`);
   currentPages = (data.data || []).map(p => p.url);
   currentPageIndex = 0;
   const pageSel = document.getElementById('page');
@@ -177,6 +179,8 @@ async function searchManga(){
     box.appendChild(img);
   });
   document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
+  // attach search infinite scroll
+  createObserver('sentinel-search', loadMoreSearch);
 }
 
 async function loadMoreSearch(){
