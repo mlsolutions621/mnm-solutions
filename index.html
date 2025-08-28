@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manga Stream</title>
+
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <meta name="theme-color" content="#0b0b10" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preload" href="css/style.css" as="style">
+  <link rel="preload" href="js/app.js" as="script">
+  <script defer src="js/app.js"></script>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="#">Manga<span>Stream</span></a>
+      <nav class="menu">
+        <a href="#trending">Trending</a>
+        <a href="#updates">Updates</a>
+        <button class="search-button" onclick="openSearchModal()">Search</button>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="container hero-inner">
+      <h1>Read Manga Instantly</h1>
+      <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
+      <div class="hero-actions">
+        <button class="btn" onclick="document.getElementById('trending').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
+        <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
+      </div>
+    </div>
+    <div class="hero-gradient"></div>
+  </section>
+
+  <main>
+    <section class="section" id="trending">
+      <div class="container section-header">
+        <h2>Trending Manga</h2>
+      </div>
+      <div class="container scroller" id="manga-list"></div>
+    </section>
+
+    <section class="section" id="updates">
+      <div class="container section-header">
+        <h2>Latest Updates</h2>
+        <p class="muted">Recently updated chapters</p>
+      </div>
+      <div class="container grid" id="updates-list"></div>
+    </section>
+  </main>
+
+  <!-- Search modal -->
+  <div class="search-modal" id="search-modal" aria-hidden="true">
+    <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
+      <div class="results" id="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Reader Modal -->
+  <div class="modal" id="reader-modal" aria-hidden="true">
+    <div class="modal-content">
+      <button class="close" onclick="closeReader()" aria-label="Close">×</button>
+
+      <div class="reader-head">
+        <div class="reader-meta">
+          <img id="reader-cover" alt="Cover" />
+          <div>
+            <h3 id="reader-title"></h3>
+            <p id="reader-description" class="muted"></p>
+          </div>
+        </div>
+        <div class="reader-controls">
+          <label for="chapter">Chapter</label>
+          <select id="chapter" onchange="changeChapter()"></select>
+          <label for="page">Page</label>
+          <select id="page" onchange="changePage()"></select>
+          <div class="spacer"></div>
+          <button class="btn small" onclick="prevPage()" aria-label="Previous page">◀</button>
+          <button class="btn small" onclick="nextPage()" aria-label="Next page">▶</button>
+        </div>
+      </div>
+
+      <div class="reader-stage">
+        <img id="reader-image" alt="Manga page" />
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>© 2025 MangaStream. All rights reserved.</p>
+      <div class="links">
+        <a href="/disclaimer.html">Disclaimer</a>
+        <a href="/about.html">About</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
+
