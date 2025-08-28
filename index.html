@@ -68,6 +68,16 @@
           </select>
         </div>
         <div class="filter">
+          <label for="filter-sort">Sort</label>
+          <select id="filter-sort" onchange="applyFilters()">
+            <option value="default" selected>Default</option>
+            <option value="latest">Latest</option>
+            <option value="most-viewed">Most Viewed</option>
+            <option value="top-rated">Top Rated</option>
+            <option value="new">New</option>
+          </select>
+        </div>
+        <div class="filter">
           <label for="filter-rating">Min Rating</label>
           <input type="range" id="filter-rating" min="0" max="10" step="1" value="0" oninput="updateRatingLabel(this.value)" onchange="applyFilters()" />
           <span id="filter-rating-value">0</span>
@@ -79,6 +89,7 @@
       </div>
       <div class="container scroller" id="manga-list"></div>
       <div class="container load-more-row"><button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button></div>
+      <div id="sentinel-trending" style="height:1px"></div>
     </section>
 
     <section class="section" id="updates">
@@ -88,6 +99,7 @@
       </div>
       <div class="container grid" id="updates-list"></div>
       <div class="container load-more-row"><button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button></div>
+      <div id="sentinel-updates" style="height:1px"></div>
     </section>
   </main>
 
@@ -97,6 +109,8 @@
     <div class="search-box">
       <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
       <div class="results" id="search-results"></div>
+      <div class="load-more-row"><button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button></div>
+      <div id="sentinel-search" style="height:1px"></div>
     </div>
   </div>
 
