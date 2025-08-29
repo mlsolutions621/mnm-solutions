@@ -1,381 +1,462 @@
-// Use MangaHook's public deployment
-const MR_BASE = 'https://mangahook-api.vercel.app';
+/* js/app.js
+   Drop-in for your provided HTML/CSS.
+   Replace MR_BASE_OVERRIDE from console if you need to point to a different host:
+   window.MR_BASE_OVERRIDE = 'https://your-proxy-or-api.com'
+*/
+
+const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://mangahook-api.vercel.app').replace(/\/+$/, '');
 
 let currentManga = null;
-let currentExternalUrl = '';
 let currentPages = [];
 let currentPageIndex = 0;
-let currentChapterSlug = '';
 
 let trendingItems = [];
-let trendingNext = null;
 let featuredItems = [];
-let featuredNext = null;
 let searchNext = null;
 let isLoadingTrending = false;
 let isLoadingUpdates = false;
 let isLoadingSearch = false;
 
-async function apiGet(path){
-  // Accept either absolute URL or path relative to MR_BASE
-  const base = MR_BASE.endsWith('/') ? MR_BASE.slice(0, -1) : MR_BASE;
-  const url = path.startsWith('http') ? path : (path.startsWith('/') ? `${base}${path}` : `${base}/${path}`);
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text().catch(()=>'');
-    const err = new Error(`HTTP ${res.status} ${url} ${text ? '- '+text.slice(0,120) : ''}`);
-    err.status = res.status;
-    throw err;
+///// small UI status overlay /////
+function showStatus(msg, isError = false, persist = false){
+  console[isError ? 'error' : 'log']('[MANGA]', msg);
+  let el = document.getElementById('manga-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'manga-status';
+    el.style.position = 'fixed';
+    el.style.left = '12px';
+    el.style.bottom = '12px';
+    el.style.zIndex = 9999;
+    el.style.padding = '8px 10px';
+    el.style.borderRadius = '8px';
+    el.style.fontFamily = 'Inter, system-ui, sans-serif';
+    el.style.fontSize = '12px';
+    el.style.maxWidth = '380px';
+    el.style.boxShadow = '0 8px 20px rgba(0,0,0,.4)';
+    document.body.appendChild(el);
   }
-  return res.json().catch(()=>{ throw new Error('Invalid JSON from '+url); });
+  el.style.background = isError ? '#ffefef' : '#eef9ff';
+  el.style.color = isError ? '#660000' : '#08304d';
+  el.textContent = msg;
+  if (!persist && !isError) setTimeout(()=>{ if (el && el.textContent === msg) el.remove(); }, 4000);
 }
 
-/*
-  Helper: try multiple endpoints (in order) until one returns useful data.
-  endpoints: array of path strings (relative or absolute)
-  validator: function(data) -> boolean (true if this response is usable)
-*/
+///// network helpers /////
+async function apiGet(path, opts = {}){
+  const url = path.startsWith('http') ? path : (path.startsWith('/') ? `${MR_BASE}${path}` : `${MR_BASE}/${path}`);
+  showStatus('Fetching: ' + url);
+  try {
+    const res = await fetch(url, Object.assign({ cache: 'no-cache' }, opts));
+    if (!res.ok) {
+      const text = await res.text().catch(()=>'<no-body>');
+      const err = `HTTP ${res.status} ${res.statusText} - ${url} - ${text.slice(0,200)}`;
+      showStatus(err, true, true);
+      throw new Error(err);
+    }
+    const json = await res.json().catch(async e=>{
+      const txt = await res.text().catch(()=>'<no-body>');
+      const msg = 'Invalid JSON from ' + url + ': ' + txt.slice(0,200);
+      showStatus(msg, true, true);
+      throw new Error(msg);
+    });
+    console.log('[apiGet]', url, json);
+    return json;
+  } catch (err) {
+    // Common cause: CORS; surface friendly message
+    if (err instanceof TypeError && /failed to fetch/i.test(String(err))) {
+      showStatus('Network/CORS error when contacting API. Open console for details.', true, true);
+    } else {
+      showStatus('Request failed: ' + (err.message || err), true, true);
+    }
+    throw err;
+  }
+}
+
+/* try several endpoints in order until one returns useful data */
 async function tryEndpoints(endpoints, validator = null){
   for (const p of endpoints){
     try {
       const d = await apiGet(p);
-      if (!validator || validator(d)) return d;
-    } catch (e) {
-      // continue to next
+      if (!validator || validator(d)) {
+        // attach endpoint used for diagnostics
+        if (d && typeof d === 'object') d._endpoint = p;
+        return d;
+      }
+    } catch (e){
       console.warn('endpoint failed', p, e && e.message);
+      // try next
     }
   }
   throw new Error('All endpoints failed: ' + endpoints.join(','));
 }
 
-/* TRENDING / FEATURED / SEARCH */
+///// SAMPLE fallback so UI shows something even with a dead API /////
+const SAMPLE_ITEMS = [
+  { id: 's1', title: 'Sample Manga A', image: 'https://via.placeholder.com/280x420?text=Manga+A' },
+  { id: 's2', title: 'Sample Manga B', image: 'https://via.placeholder.com/280x420?text=Manga+B' },
+  { id: 's3', title: 'Sample Manga C', image: 'https://via.placeholder.com/280x420?text=Manga+C' }
+];
 
-// MangaHook README shows /api/mangaList returning { mangaList: [...] }
+///// data fetchers (robust / tolerant) /////
 async function getTrending(){
   try {
     const data = await tryEndpoints([
       '/api/mangaList',
-      '/api/all',              // possible fallback
-      '/api/latest'            // another common name
+      '/api/mangaList?page=1',
+      '/api/latest',
+      '/api/latest-updates',
+      '/api/all'
     ], d => Array.isArray(d.mangaList) || Array.isArray(d.data) || Array.isArray(d));
-    // Normalize
-    return (data.mangaList || data.data || data) || [];
+    if (Array.isArray(data.mangaList)) return data.mangaList;
+    if (Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data)) return data;
+    // try to find first array property
+    for (const k of Object.keys(data||{})) {
+      if (Array.isArray(data[k])) return data[k];
+    }
   } catch (e) {
-    console.error('getTrending error', e);
-    return [];
+    console.warn('getTrending fallback', e);
   }
+  showStatus('Falling back to sample trending items.', true);
+  return SAMPLE_ITEMS;
 }
 
 async function getFeatured(){
-  // We'll treat featured as latest updates; use same endpoint or fallback
   try {
     const data = await tryEndpoints([
-      '/api/mangaList',
       '/api/latest-updates',
+      '/api/mangaList',
       '/api/latest'
-    ], d => Array.isArray(d.mangaList) || Array.isArray(d.data) || Array.isArray(d));
-    return (data.mangaList || data.data || data) || [];
+    ], d => Array.isArray(d.data) || Array.isArray(d.mangaList) || Array.isArray(d));
+    if (Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data.mangaList)) return data.mangaList;
+    if (Array.isArray(data)) return data;
+    for (const k of Object.keys(data||{})) {
+      if (Array.isArray(data[k])) return data[k];
+    }
   } catch (e) {
-    console.error('getFeatured error', e);
-    return [];
+    console.warn('getFeatured fallback', e);
   }
+  return SAMPLE_ITEMS;
 }
 
-let searchPage = 1;
-let lastSearchQuery = '';
-async function searchTitles(q, page = 1){
+let lastSearchQuery = '', searchPage = 1;
+async function searchTitles(q, page=1){
   lastSearchQuery = q;
   searchPage = page;
-  // MangaHook claims to support search; try common search endpoints and fall back to client-side filter
+  if (!q) return [];
   try {
     const data = await tryEndpoints([
       `/api/search?keyword=${encodeURIComponent(q)}&page=${page}`,
       `/api/search?query=${encodeURIComponent(q)}&page=${page}`,
-      `/api/mangaList?page=${page}&keyword=${encodeURIComponent(q)}`,
       `/api/mangaList?page=${page}`
-    ], d => Array.isArray(d.mangaList) || Array.isArray(d.data) || Array.isArray(d));
-    // compute next if metadata available
-    if (data.metaData && typeof data.metaData.totalPages === 'number') {
-      searchNext = (page < data.metaData.totalPages) ? `/api/search?keyword=${encodeURIComponent(q)}&page=${page+1}` : null;
-    } else if (data.totalPages && page < data.totalPages) {
+    ], d => Array.isArray(d.data) || Array.isArray(d.mangaList) || Array.isArray(d));
+    // compute searchNext if present
+    if (data.totalPages && page < data.totalPages) {
+      searchNext = `/api/search?keyword=${encodeURIComponent(q)}&page=${page+1}`;
+    } else if (data.metaData && data.metaData.totalPages && page < data.metaData.totalPages) {
       searchNext = `/api/search?keyword=${encodeURIComponent(q)}&page=${page+1}`;
     } else {
       searchNext = null;
     }
-    const items = (data.mangaList || data.data || data) || [];
-    // If we received a full list (mangaList) but it's unfiltered, attempt client-side filter when proper search endpoint missing
-    if (!/search/i.test(data._endpoint || '') && q && !/search\?/.test(JSON.stringify(data))) {
+    const list = data.data || data.mangaList || data;
+    // if this was an unfiltered list, do client-side filter
+    if (Array.isArray(list) && !/search/i.test(data._endpoint || '')) {
       const ql = q.toLowerCase();
-      return items.filter(m => (m.title || m.name || '').toLowerCase().includes(ql));
+      return list.filter(m => (m.title || m.name || '').toLowerCase().includes(ql));
     }
-    return items;
+    return Array.isArray(list) ? list : [];
   } catch (e) {
-    console.error('searchTitles error', e);
-    // as a last resort, return empty
+    console.warn('searchTitles fallback', e);
     return [];
   }
 }
 
-/* DETAILS & CHAPTERS */
-
-// Try to retrieve details by common endpoints. Validator expects object with title or id.
 async function getDetails(slug){
-  // slug may be an id or slug string
+  if (!slug) return null;
   try {
     const endpoints = [
       `/api/manga/${encodeURIComponent(slug)}`,
       `/api/mangaDetail/${encodeURIComponent(slug)}`,
-      `/api/mangaDetail?id=${encodeURIComponent(slug)}`,
       `/api/getManga/${encodeURIComponent(slug)}`,
-      `/api/mangaList` // fallback: search by id in list
+      `/api/mangaList`
     ];
-    const data = await tryEndpoints(endpoints, d => (d && (d.title || d.manga || d.id || d.mangaList)));
-    // If we got a list from mangaList, find the item
+    const data = await tryEndpoints(endpoints, d => d && (d.title || d.manga || d.mangaList || d.data));
     if (Array.isArray(data.mangaList)) {
-      const found = data.mangaList.find(x => String(x.id) === String(slug) || String(x.title).toLowerCase() === String(slug).toLowerCase());
-      if (found) return found;
+      return data.mangaList.find(x => String(x.id) === String(slug) || String(x.title).toLowerCase() === String(slug).toLowerCase()) || null;
     }
-    // If the response wraps object in { manga: {...} } or { data: {...} }
     return data.manga || data.data || data;
   } catch (e) {
-    console.error('getDetails error', e);
+    console.warn('getDetails failed', e);
     return null;
   }
 }
 
-// Try to fetch chapters for a manga id
 async function getChapters(id){
+  if (!id) return [];
   try {
     const endpoints = [
       `/api/chapters?mangaId=${encodeURIComponent(id)}`,
       `/api/chapters/${encodeURIComponent(id)}`,
       `/api/chapterList?mangaId=${encodeURIComponent(id)}`,
-      `/api/manga/${encodeURIComponent(id)}`, // some responses include chapters
-      `/api/mangaDetail/${encodeURIComponent(id)}`
+      `/api/manga/${encodeURIComponent(id)}`
     ];
-    const data = await tryEndpoints(endpoints, d => Array.isArray(d.chapters) || Array.isArray(d.chapterList) || Array.isArray(d.data) || Array.isArray(d.manga?.chapters));
-    // Normalize
-    const chapters = d => d.chapters || d.chapterList || d.data || d.manga?.chapters || null;
-    const chs = chapters(data);
-    if (Array.isArray(chs)) return chs;
-    // if the returned object contains numeric keys or nested structure, try to map
+    const data = await tryEndpoints(endpoints, d => Array.isArray(d.chapters) || Array.isArray(d.chapterList) || Array.isArray(d.data) || Array.isArray(d));
+    if (Array.isArray(data.chapters)) return data.chapters;
+    if (Array.isArray(data.chapterList)) return data.chapterList;
+    if (Array.isArray(data.data)) return data.data;
     if (Array.isArray(data)) return data;
+    // no chapters found
     return [];
   } catch (e) {
-    console.error('getChapters error', e);
+    console.warn('getChapters fallback', e);
     return [];
   }
 }
 
-// Get images for a chapter
 async function getChapterPages(chapterSlug){
+  if (!chapterSlug) return [];
   try {
     const endpoints = [
       `/api/chapter/${encodeURIComponent(chapterSlug)}`,
       `/api/read/${encodeURIComponent(chapterSlug)}`,
-      `/api/chapterList/${encodeURIComponent(chapterSlug)}`,
-      `/api/getChapter?chapter=${encodeURIComponent(chapterSlug)}`
+      `/api/getChapter?chapter=${encodeURIComponent(chapterSlug)}`,
+      `/api/chapterList/${encodeURIComponent(chapterSlug)}`
     ];
-    const data = await tryEndpoints(endpoints, d => Array.isArray(d.pages) || Array.isArray(d.images) || Array.isArray(d.data));
-    // common shapes: { pages: [url,...] } or { images: [...] } or array directly
+    const data = await tryEndpoints(endpoints, d => Array.isArray(d.pages) || Array.isArray(d.images) || Array.isArray(d.data) || Array.isArray(d));
     if (Array.isArray(data.pages)) return data.pages;
     if (Array.isArray(data.images)) return data.images;
-    if (Array.isArray(data.data)) return data.data.map(p => p.url || p);
+    if (Array.isArray(data.data)) return data.data.map(x => x.url || x);
     if (Array.isArray(data)) return data;
     return [];
   } catch (e) {
-    console.error('getChapterPages error', e);
+    console.warn('getChapterPages failed', e);
     return [];
   }
 }
 
-/* The rest of your UI code can stay the same but we call the new functions above. */
-/* ---- (unchanged UI parts below) ---- */
-
+///// UI renderers (use your HTML IDs) /////
 function renderTrending(items){
-  const list=document.getElementById('manga-list');
-  if (!list) return;
-  list.innerHTML='';
+  const list = document.getElementById('manga-list');
+  if (!list) { showStatus('Missing container #manga-list', true); return; }
+  list.innerHTML = '';
   items.forEach(m=>{
-    const img=document.createElement('img');
-    img.src=(m.image || m.cover || m.img || m.thumbnail || '');
-    img.alt=(m.title || m.name || '');
-    img.onclick=()=>openReaderInfo(m.id || m.title || m.slug || m.url, m);
+    const img = document.createElement('img');
+    img.src = (m.image || m.cover || m.img || m.thumbnail || '');
+    img.alt = (m.title || m.name || '');
+    img.style.width = '160px';
+    img.style.height = 'auto';
+    img.style.objectFit = 'cover';
+    img.onclick = ()=> openReaderInfo(m.id || m.title || m.slug || m.url, m);
     list.appendChild(img);
   });
 }
 
 function renderUpdates(items){
-  const grid=document.getElementById('updates-list');
-  if (!grid) return;
-  grid.innerHTML='';
+  const grid = document.getElementById('updates-list');
+  if (!grid) { showStatus('Missing container #updates-list', true); return; }
+  grid.innerHTML = '';
   items.forEach(m=>{
-    const card=document.createElement('div');
-    card.className='card';
-    const img=document.createElement('img');
-    img.src=(m.image || m.cover || m.img || '');
-    img.alt=(m.title || m.name);
-    img.onclick=()=>openReaderInfo(m.id || m.title || m.slug || m.url, m);
-    const meta=document.createElement('div'); meta.className='meta';
-    const title=document.createElement('div'); title.className='title'; title.textContent=(m.title || m.name);
+    const card = document.createElement('div');
+    card.className = 'card';
+    const img = document.createElement('img');
+    img.src = (m.image || m.cover || m.img || '');
+    img.alt = (m.title || m.name || '');
+    img.onclick = ()=> openReaderInfo(m.id || m.title || m.slug || m.url, m);
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const title = document.createElement('div'); title.className = 'title'; title.textContent = (m.title || m.name || '');
     meta.appendChild(title);
     card.appendChild(img); card.appendChild(meta);
     grid.appendChild(card);
   });
 }
 
-async function getInfo(id){
-  return await getDetails(id);
-}
-
 async function openReaderInfo(id, fallback){
-  const d = await getInfo(id);
-  if (!d) {
-    alert('Could not load manga info.');
-    return;
-  }
+  const d = await getDetails(id) || fallback || { title: fallback?.title || id, image: fallback?.image || '' };
+  if (!d) return showStatus('Unable to load manga info', true);
   currentManga = d;
-  document.getElementById('reader-cover').src = d.image || d.cover || fallback?.cover || fallback?.image || '';
-  document.getElementById('reader-title').textContent = d.title || fallback?.title || fallback?.name || '';
-  document.getElementById('reader-description').textContent = d.description || d.synopsis || '';
-
+  const cover = document.getElementById('reader-cover');
+  const title = document.getElementById('reader-title');
+  const desc = document.getElementById('reader-description');
+  if (cover) cover.src = d.image || d.cover || fallback?.image || '';
+  if (title) title.textContent = d.title || d.name || id;
+  if (desc) desc.textContent = d.description || d.synopsis || '';
+  // populate chapters
   const chapterSel = document.getElementById('chapter');
   const pageSel = document.getElementById('page');
   if (chapterSel) chapterSel.innerHTML = '';
   if (pageSel) pageSel.innerHTML = '';
-
-  const chs = await getChapters(d.id || id);
-  const chaptersArr = (chs || []).slice().sort((a,b)=>{
-    // try to guess order by chapterNumber or by reverse
-    const na = parseFloat(a.chapterNumber ?? a.chapter ?? a.num ?? a.index ?? a.order ?? 0);
-    const nb = parseFloat(b.chapterNumber ?? b.chapter ?? b.num ?? b.index ?? b.order ?? 0);
-    return (nb - na);
-  });
-  if (chapterSel && Array.isArray(chaptersArr)) {
-    chaptersArr.forEach(ch => {
-      const opt=document.createElement('option');
-      // normalize chapter identity
-      const chapId = ch.id || ch.chapter || ch.slug || ch.name || ch.chapterNumber;
-      opt.value = JSON.stringify({ mangaId: d.id || id, chapterId: chapId, chapterNumber: ch.chapterNumber || ch.chapter || ch.num || '' });
-      opt.textContent = `Ch. ${ch.chapterNumber ?? ch.chapter ?? ch.num ?? chapId}` + (ch.lang ? ` (${ch.lang})` : '');
-      chapterSel.appendChild(opt);
-    });
-    if (chaptersArr.length) {
-      chapterSel.value = JSON.stringify({ mangaId: d.id || id, chapterId: chaptersArr[0].id || chaptersArr[0].chapter || chaptersArr[0].slug || chaptersArr[0].chapterNumber });
-      const c = JSON.parse(chapterSel.value);
-      await loadChapterPagesNode(c.mangaId || c.id || id, chaptersArr[0].lang || 'en', c.chapterNumber || c.chapterId || c.chapterId);
-    }
-  }
-
-  document.getElementById('reader-modal').style.display = 'flex';
-}
-
-async function loadChapterPagesNode(mangaId, lang, chapterNumber){
-  // If we have a chapter id string (chapterNumber may actually be slug)
-  const chapterId = chapterNumber || lang;
-  let pages = [];
-  // Try the typical chapter endpoints
   try {
-    // try chapter slug first
-    pages = await getChapterPages(chapterId);
-    if (!pages.length) {
-      // some APIs expect mangaId + chapterNumber
-      pages = await tryEndpoints([
-        `/api/read/${encodeURIComponent(mangaId)}/${encodeURIComponent(lang)}/${encodeURIComponent(chapterNumber)}`,
-        `/api/read?mangaId=${encodeURIComponent(mangaId)}&chapter=${encodeURIComponent(chapterNumber)}`
-      ], d => Array.isArray(d.data) || Array.isArray(d.pages) || Array.isArray(d.images))
-        .then(d => d.data || d.pages || d.images || []);
+    const chs = await getChapters(d.id || id);
+    const chaptersArr = (Array.isArray(chs) ? chs : []).slice().sort((a,b)=> {
+      const na = parseFloat(a.chapterNumber ?? a.chapter ?? a.num ?? a.index ?? 0) || 0;
+      const nb = parseFloat(b.chapterNumber ?? b.chapter ?? b.num ?? b.index ?? 0) || 0;
+      return nb - na;
+    });
+    if (chapterSel && chaptersArr.length) {
+      chaptersArr.forEach(ch => {
+        const opt = document.createElement('option');
+        const chapId = ch.id || ch.chapter || ch.slug || ch.name || ch.chapterNumber;
+        opt.value = JSON.stringify({ mangaId: d.id || id, chapterId: chapId, chapterNumber: ch.chapterNumber || ch.chapter || ch.num || '' });
+        opt.textContent = `Ch. ${ch.chapterNumber ?? ch.chapter ?? ch.num ?? chapId}` + (ch.lang ? ` (${ch.lang})` : '');
+        chapterSel.appendChild(opt);
+      });
+      // auto-load first chapter
+      const first = JSON.parse(chapterSel.value || chapterSel.options[0].value);
+      await loadChapterPagesNode(first.mangaId || first.id || id, first.chapterId || first.chapterNumber);
+    } else {
+      // fallback: set a single sample option so UI doesn't break
+      if (chapterSel) {
+        const o = document.createElement('option'); o.value = JSON.stringify({ mangaId: d.id || id, chapterId: 'sample-ch1' }); o.textContent = 'Ch. 1 (sample)';
+        chapterSel.appendChild(o);
+      }
+      currentPages = [d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=Page+1'];
+      currentPageIndex = 0;
+      updateReaderImage();
     }
   } catch (e) {
-    console.warn('loadChapterPagesNode fallback failed', e);
-    pages = [];
+    console.warn('openReaderInfo chapters failed', e);
+    // fallback
+    currentPages = [d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=Page+1'];
+    currentPageIndex = 0;
+    updateReaderImage();
   }
-  currentPages = pages.map(p => (typeof p === 'string' ? p : (p.url || p.image || ''))).filter(Boolean);
-  currentPageIndex = 0;
-  const pageSel = document.getElementById('page');
-  if (pageSel) pageSel.innerHTML = '';
-  currentPages.forEach((_, i)=>{
-    const o=document.createElement('option'); o.value=String(i); o.textContent=`Page ${i+1}`; pageSel.appendChild(o);
-  });
-  if (currentPages.length) {
-    pageSel.value = '0';
-    document.getElementById('reader-image').src = currentPages[0];
-  } else {
-    document.getElementById('reader-image').src = '';
+  const modal = document.getElementById('reader-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+async function loadChapterPagesNode(mangaId, chapterIdOrNumber){
+  try {
+    // Try chapter slug first
+    let pages = await getChapterPages(chapterIdOrNumber).catch(()=>[]);
+    if (!pages.length) {
+      // try read endpoint with mangaId + chapter
+      const p = await tryEndpoints([
+        `/api/read/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterIdOrNumber)}`,
+        `/api/read?mangaId=${encodeURIComponent(mangaId)}&chapter=${encodeURIComponent(chapterIdOrNumber)}`
+      ], d => Array.isArray(d.data) || Array.isArray(d.pages) || Array.isArray(d.images));
+      pages = p.data || p.pages || p.images || [];
+    }
+    // normalize
+    currentPages = (pages || []).map(x => (typeof x === 'string' ? x : (x.url || x.image || ''))).filter(Boolean);
+    currentPageIndex = 0;
+    // populate page select
+    const pageSel = document.getElementById('page');
+    if (pageSel) {
+      pageSel.innerHTML = '';
+      currentPages.forEach((_, i) => {
+        const o = document.createElement('option'); o.value = String(i); o.textContent = `Page ${i+1}`; pageSel.appendChild(o);
+      });
+    }
+    updateReaderImage();
+  } catch (e) {
+    console.warn('loadChapterPagesNode failed', e);
+    currentPages = [];
+    updateReaderImage();
   }
 }
 
-/* pagination / navigation functions (unchanged) */
-function changeChapter(){ const raw=document.getElementById('chapter').value; if(!raw) return; const c=JSON.parse(raw); loadChapterPagesNode(c.mangaId || c.id, c.lang || 'en', c.chapterNumber || c.chapterId || c.chapterId); }
-function changePage(){ const idx=parseInt(document.getElementById('page').value||'0',10); currentPageIndex = isNaN(idx) ? 0 : idx; const url = currentPages[currentPageIndex]; if (url) document.getElementById('reader-image').src = url; }
-function prevPage(){ if (!currentPages.length) return; currentPageIndex = Math.max(0, currentPageIndex - 1); document.getElementById('page').value = String(currentPageIndex); changePage(); }
-function nextPage(){ if (!currentPages.length) return; currentPageIndex = Math.min(currentPages.length - 1, currentPageIndex + 1); document.getElementById('page').value = String(currentPageIndex); changePage(); }
-function closeReader(){ document.getElementById('reader-modal').style.display='none'; }
+function updateReaderImage(){
+  const img = document.getElementById('reader-image');
+  const pageSel = document.getElementById('page');
+  if (pageSel && currentPages.length) pageSel.value = String(currentPageIndex);
+  if (img) img.src = currentPages[currentPageIndex] || '';
+}
 
+function changeChapter(){ const raw = document.getElementById('chapter')?.value; if (!raw) return; const c = JSON.parse(raw); loadChapterPagesNode(c.mangaId || c.id, c.chapterId || c.chapterNumber || c.chapterId); }
+function changePage(){ const idx = parseInt(document.getElementById('page')?.value || '0', 10); currentPageIndex = isNaN(idx) ? 0 : idx; updateReaderImage(); }
+function prevPage(){ if (!currentPages.length) return; currentPageIndex = Math.max(0, currentPageIndex - 1); updateReaderImage(); if (document.getElementById('page')) document.getElementById('page').value = String(currentPageIndex); }
+function nextPage(){ if (!currentPages.length) return; currentPageIndex = Math.min(currentPages.length - 1, currentPageIndex + 1); updateReaderImage(); if (document.getElementById('page')) document.getElementById('page').value = String(currentPageIndex); }
+function closeReader(){ const modal = document.getElementById('reader-modal'); if (modal) modal.style.display = 'none'; }
+
+///// Search modal helpers /////
+function openSearchModal(){ const m = document.getElementById('search-modal'); if (m) { m.style.display = 'flex'; setTimeout(()=>document.getElementById('search-input')?.focus(), 50); } }
+function closeSearchModal(){ const m = document.getElementById('search-modal'); if (m) { m.style.display = 'none'; const box = document.getElementById('search-results'); if (box) box.innerHTML = ''; } }
+
+let searchDebounce = null;
 async function searchManga(){
-  const q=document.getElementById('search-input').value.trim();
-  const box=document.getElementById('search-results'); if(!q){ box.innerHTML=''; return; }
-  const items = await searchTitles(q);
-  box.innerHTML='';
-  items.forEach(m=>{
-    const img=document.createElement('img');
-    img.src=(m.image||m.cover||m.img||m.thumbnail); img.alt=(m.title||m.name||'');
-    img.onclick=()=>{ closeSearchModal(); openReaderInfo(m.id || m.title || m.slug || m.url, m); };
-    box.appendChild(img);
-  });
-  document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
-  createObserver('sentinel-search', loadMoreSearch);
+  const q = document.getElementById('search-input')?.value?.trim() || '';
+  const box = document.getElementById('search-results');
+  if (!q) { if (box) box.innerHTML = ''; return; }
+  if (searchDebounce) clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(async ()=>{
+    try {
+      const items = await searchTitles(q, 1);
+      if (!box) return;
+      box.innerHTML = '';
+      items.forEach(m=>{
+        const img = document.createElement('img');
+        img.src = (m.image || m.cover || m.img || m.thumbnail || '');
+        img.alt = (m.title || m.name || '');
+        img.onclick = ()=> { closeSearchModal(); openReaderInfo(m.id || m.title || m.slug || m.url, m); };
+        box.appendChild(img);
+      });
+      document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
+      createObserver('sentinel-search', loadMoreSearch);
+    } catch (e) {
+      console.warn('searchManga failed', e);
+    }
+  }, 260);
 }
 
 async function loadMoreSearch(){
-  if (!searchNext || isLoadingSearch) return; isLoadingSearch = true;
+  if (!searchNext || isLoadingSearch) return;
+  isLoadingSearch = true;
   try {
     const url = new URL(searchNext, MR_BASE);
     const path = url.pathname + url.search;
     const data = await apiGet(path);
     searchNext = data.next || null;
     const items = data.mangaList || data.data || data || [];
-    const box=document.getElementById('search-results');
+    const box = document.getElementById('search-results');
+    if (!box) return;
     items.forEach(m=>{
-      const img=document.createElement('img');
-      img.src=(m.image||m.cover||m.img||m.thumbnail); img.alt=(m.title||m.name||'');
-      img.onclick=()=>{ closeSearchModal(); openReaderInfo(m.id || m.title || m.slug || m.url, m); };
+      const img = document.createElement('img');
+      img.src = (m.image || m.cover || m.img || m.thumbnail || '');
+      img.alt = (m.title || m.name || '');
+      img.onclick = ()=> { closeSearchModal(); openReaderInfo(m.id || m.title || m.slug || m.url, m); };
       box.appendChild(img);
     });
     document.getElementById('search-load-more').style.display = searchNext ? 'inline-block' : 'none';
   } catch (e) {
-    console.error('loadMoreSearch error', e);
+    console.warn('loadMoreSearch failed', e);
   }
   isLoadingSearch = false;
 }
 
-function openSearchModal(){ const m=document.getElementById('search-modal'); if(m){ m.style.display='flex'; setTimeout(()=>document.getElementById('search-input').focus(),0); } }
-function closeSearchModal(){ const m=document.getElementById('search-modal'); if(m){ m.style.display='none'; document.getElementById('search-results').innerHTML=''; } }
-
-async function init(){
-  const [t, f] = await Promise.all([getTrending(), getFeatured()]);
-  trendingItems = t.slice();
-  featuredItems = f.slice();
-  renderTrending(trendingItems);
-  renderUpdates(featuredItems);
-  createObserver('sentinel-trending', loadMoreTrending);
-  createObserver('sentinel-updates', loadMoreUpdates);
+///// Filters (uses trendingItems as source) /////
+function updateRatingLabel(val){ const el = document.getElementById('filter-rating-value'); if (el) el.textContent = String(val); }
+function applyFilters(){
+  const type = document.getElementById('filter-type')?.value || 'all';
+  const lang = document.getElementById('filter-lang')?.value || 'all';
+  const minRating = parseInt(document.getElementById('filter-rating')?.value || '0', 10);
+  const genreRaw = (document.getElementById('filter-genre')?.value || '').toLowerCase();
+  const genreTerms = genreRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const sort = document.getElementById('filter-sort')?.value || 'default';
+  const matches = (m) => {
+    const passType = (type === 'all') || (String(m.type || '').toLowerCase() === type);
+    const passLang = (lang === 'all') || ((m.langs || m.language || []).map?.(x=>String(x).toLowerCase?.())?.includes(lang) ?? (String(m.lang || '').toLowerCase() === lang));
+    const passRating = (typeof m.rating === 'number') ? (m.rating >= minRating) : true;
+    const passGenre = genreTerms.length === 0 || genreTerms.every(term => (m.genres || []).some(g=>String(g).toLowerCase().includes(term)));
+    return passType && passLang && passRating && passGenre;
+  };
+  const filtered = (Array.isArray(trendingItems) ? trendingItems : []).filter(matches);
+  // TODO: sort if needed (basic)
+  renderTrending(filtered);
 }
 
-init();
+let filtersDebounce = null;
+function debouncedApplyFilters(){ if (filtersDebounce) clearTimeout(filtersDebounce); filtersDebounce = setTimeout(applyFilters, 200); }
 
-// Filters and pagination helpers (unchanged)
-function updateRatingLabel(val){ const el=document.getElementById('filter-rating-value'); if(el) el.textContent = String(val); }
-function applyFilters(){ /* keep your original filter logic (use trendingItems array) */ /* ... */ }
-let debounceTimer = null;
-function debouncedApplyFilters(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(applyFilters, 250); }
-
+///// infinite loading for trending & updates /////
 async function loadMoreTrending(){
-  if (isLoadingTrending) return; isLoadingTrending = true;
-  window._browsePage = (window._browsePage||1) + 1;
+  if (isLoadingTrending) return;
+  isLoadingTrending = true;
+  window._browsePage = (window._browsePage || 1) + 1;
   try {
-    const data = await apiGet(`/api/mangaList?page=${window._browsePage}`);
-    const more = (data.mangaList || data.data || data) || [];
+    const data = await apiGet(`/api/mangaList?page=${window._browsePage}`).catch(()=>null);
+    const more = data ? (data.mangaList || data.data || data || []) : [];
     trendingItems = trendingItems.concat(more);
     applyFilters();
   } catch (e) {
@@ -385,11 +466,12 @@ async function loadMoreTrending(){
 }
 
 async function loadMoreUpdates(){
-  if (isLoadingUpdates) return; isLoadingUpdates = true;
-  window._updatesPage = (window._updatesPage||1) + 1;
+  if (isLoadingUpdates) return;
+  isLoadingUpdates = true;
+  window._updatesPage = (window._updatesPage || 1) + 1;
   try {
-    const data = await apiGet(`/api/mangaList?page=${window._updatesPage}`);
-    const more = (data.mangaList || data.data || data) || [];
+    const data = await apiGet(`/api/mangaList?page=${window._updatesPage}`).catch(()=>null);
+    const more = data ? (data.mangaList || data.data || data || []) : [];
     featuredItems = featuredItems.concat(more);
     renderUpdates(featuredItems);
   } catch (e) {
@@ -398,9 +480,66 @@ async function loadMoreUpdates(){
   isLoadingUpdates = false;
 }
 
+///// IntersectionObserver helper /////
 function createObserver(targetId, callback){
   const el = document.getElementById(targetId);
   if (!el) return;
-  const io = new IntersectionObserver((entries)=>{ entries.forEach(entry=>{ if (entry.isIntersecting) callback(); }); });
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) callback(); });
+  }, { rootMargin: '200px' });
   io.observe(el);
 }
+
+///// handy API testing function (run from console) /////
+window.testApi = async function testApi(endpoint = '/api/mangaList'){
+  try {
+    showStatus('Testing API: ' + endpoint, false, true);
+    const res = await apiGet(endpoint);
+    console.log('testApi response:', res);
+    showStatus('API responded; see console.log for object', false, true);
+    return res;
+  } catch (e) {
+    console.error('testApi failed', e);
+    showStatus('API test failed - check console for details', true, true);
+    return null;
+  }
+};
+
+///// initialization (run after DOM ready) /////
+async function init(){
+  showStatus('Initializing MangaStream client...');
+  try {
+    const [t, f] = await Promise.all([getTrending(), getFeatured()]);
+    trendingItems = Array.isArray(t) ? t : SAMPLE_ITEMS;
+    featuredItems = Array.isArray(f) ? f : SAMPLE_ITEMS;
+    renderTrending(trendingItems);
+    renderUpdates(featuredItems);
+    createObserver('sentinel-trending', loadMoreTrending);
+    createObserver('sentinel-updates', loadMoreUpdates);
+    showStatus('Ready — if UI is empty, open console and run window.testApi() to inspect API responses.');
+  } catch (e) {
+    console.error('init failed', e);
+    renderTrending(SAMPLE_ITEMS);
+    renderUpdates(SAMPLE_ITEMS);
+    showStatus('Initialized with fallback content (see console).', true, true);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(init, 120); });
+
+/* expose functions used by inline HTML attributes so they exist in global scope */
+window.openSearchModal = openSearchModal;
+window.closeSearchModal = closeSearchModal;
+window.searchManga = searchManga;
+window.openReaderInfo = openReaderInfo;
+window.closeReader = closeReader;
+window.changeChapter = changeChapter;
+window.changePage = changePage;
+window.prevPage = prevPage;
+window.nextPage = nextPage;
+window.updateRatingLabel = updateRatingLabel;
+window.applyFilters = applyFilters;
+window.debouncedApplyFilters = debouncedApplyFilters;
+window.loadMoreTrending = loadMoreTrending;
+window.loadMoreUpdates = loadMoreUpdates;
+window.loadMoreSearch = loadMoreSearch;
