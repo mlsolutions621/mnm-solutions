@@ -1,4 +1,4 @@
-const MR_BASE = 'https://mangareaderto-api.vercel.app/api/v1';
+const MR_BASE = 'https://api.mangahook.com';
 
 let currentManga = null;
 let currentExternalUrl = '';
@@ -29,7 +29,7 @@ async function getTrending(){
 }
 
 async function getFeatured(){
-  const data = await apiGet('/latest-updates');
+  const data = await apiGet('/latest');
   return (data.data || data) || [];
 }
 
@@ -38,9 +38,9 @@ let lastSearchQuery = '';
 async function searchTitles(q, page=1){
   lastSearchQuery = q;
   searchPage = page;
-  const data = await apiGet(`/search?keyword=${encodeURIComponent(q)}&page=${page}`);
-  // This API reports totalPages; compute next
-  searchNext = (data.totalPages && page < data.totalPages) ? `/search?keyword=${encodeURIComponent(q)}&page=${page+1}` : null;
+  const data = await apiGet(`/search?q=${encodeURIComponent(q)}&page=${page}`);
+  // MangaHook API pagination
+  searchNext = (data.hasNextPage) ? `/search?q=${encodeURIComponent(q)}&page=${page+1}` : null;
   return data.data || [];
 }
 
@@ -83,11 +83,11 @@ function renderUpdates(items){
 }
 
 async function getInfo(id){
-  return await apiGet(`/info/${encodeURIComponent(id)}`);
+  return await apiGet(`/manga/${encodeURIComponent(id)}`);
 }
 
 async function getChapters(id){
-  return await apiGet(`/chapters/${encodeURIComponent(id)}`);
+  return await apiGet(`/manga/${encodeURIComponent(id)}/chapters`);
 }
 
 async function openReaderInfo(id, fallback){
@@ -122,10 +122,9 @@ async function openReaderInfo(id, fallback){
 }
 
 async function loadChapterPagesNode(id, lang, chapterNumber){
-  // default to English if none
-  const useLang = lang || 'en';
-  const data = await apiGet(`/read/${encodeURIComponent(id)}/${encodeURIComponent(useLang)}/${encodeURIComponent(chapterNumber)}`);
-  currentPages = (data.data || []).map(p => p.url);
+  // MangaHook uses chapter ID directly
+  const data = await apiGet(`/chapter/${encodeURIComponent(chapterNumber)}`);
+  currentPages = (data.data || []).map(p => p.url || p.image);
   currentPageIndex = 0;
   const pageSel = document.getElementById('page');
   pageSel.innerHTML = '';
