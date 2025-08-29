@@ -1,9 +1,9 @@
-/* js/app.js - MangaHook client (drop-in)
-   Default base: https://mangahook-api.vercel.app
+/* js/app.js - MangaHook client (drop-in, modified for your Render API)
+   Default base: https://mangahook-api-zedu.onrender.com
    If you run MangaHook locally, set window.MR_BASE_OVERRIDE = 'http://localhost:3000' in console then reload.
 */
 
-const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://mangahook-api.vercel.app').replace(/\/+$/,'');
+const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://mangahook-api-zedu.onrender.com').replace(/\/+$/,'');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], searchNext = null;
@@ -54,7 +54,7 @@ async function apiGet(path, opts = {}){
     return json;
   } catch (err) {
     if (err instanceof TypeError && /failed to fetch/i.test(String(err))) {
-      showStatus('Network/CORS error when contacting MangaHook. See console. If CORS, run local server (instructions below).', true, true);
+      showStatus('Network/CORS error when contacting MangaHook API. See console. If CORS, run local server.', true, true);
     } else {
       showStatus('Request failed: ' + (err.message || err), true, true);
     }
@@ -68,11 +68,9 @@ async function getTrending(){
   try {
     const data = await apiGet('/api/mangaList').catch(()=>null);
     if (data) {
-      // Many responses give { mangaList: [...], metaData: {...} }
       if (Array.isArray(data.mangaList)) return data.mangaList;
       if (Array.isArray(data.data)) return data.data;
       if (Array.isArray(data)) return data;
-      // try first array property
       for (const k of Object.keys(data||{})) if (Array.isArray(data[k])) return data[k];
     }
   } catch (e){ console.warn('getTrending error', e); }
@@ -104,9 +102,7 @@ async function searchTitles(q, page = 1){
   try {
     const data = await apiGet(`/api/search?keyword=${encodeURIComponent(q)}&page=${page}`).catch(()=>null);
     if (data) {
-      // response: { data: [ ... ] } or direct array
       const list = data.data || data.mangaList || data || [];
-      // compute next if meta available
       if (data.metaData && typeof data.metaData.totalPages === 'number') {
         searchNext = (page < data.metaData.totalPages) ? `/api/search?keyword=${encodeURIComponent(q)}&page=${page+1}` : null;
       } else if (data.totalPages && page < data.totalPages) {
@@ -187,7 +183,6 @@ async function openReaderInfo(id, fallback){
   document.getElementById('reader-cover').src = d.image || d.cover || fallback?.image || '';
   document.getElementById('reader-title').textContent = d.title || d.name || '';
   document.getElementById('reader-description').textContent = d.description || d.synopsis || '';
-  // populate chapters
   const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
   const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
   const chs = await getChapters(d.id || id);
