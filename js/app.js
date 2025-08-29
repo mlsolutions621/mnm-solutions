@@ -1,4 +1,4 @@
-const MR_BASE = 'https://api.mangahook.com';
+const MR_BASE = 'https://mangareaderto-api.vercel.app/api/v1';
 
 let currentManga = null;
 let currentExternalUrl = '';
@@ -24,12 +24,12 @@ async function apiGet(path){
 }
 
 async function getTrending(){
-  const data = await apiGet('/api/mangaList?type=trending');
+  const data = await apiGet('/trending');
   return (data.data || data) || [];
 }
 
 async function getFeatured(){
-  const data = await apiGet('/api/mangaList?type=newest');
+  const data = await apiGet('/latest-updates');
   return (data.data || data) || [];
 }
 
@@ -38,9 +38,9 @@ let lastSearchQuery = '';
 async function searchTitles(q, page=1){
   lastSearchQuery = q;
   searchPage = page;
-  const data = await apiGet(`/api/search/${encodeURIComponent(q)}?page=${page}`);
-  // MangaHook API pagination
-  searchNext = (data.hasNextPage) ? `/api/search/${encodeURIComponent(q)}?page=${page+1}` : null;
+  const data = await apiGet(`/search?keyword=${encodeURIComponent(q)}&page=${page}`);
+  // This API reports totalPages; compute next
+  searchNext = (data.totalPages && page < data.totalPages) ? `/search?keyword=${encodeURIComponent(q)}&page=${page+1}` : null;
   return data.data || [];
 }
 
@@ -83,11 +83,11 @@ function renderUpdates(items){
 }
 
 async function getInfo(id){
-  return await apiGet(`/api/manga/${encodeURIComponent(id)}`);
+  return await apiGet(`/info/${encodeURIComponent(id)}`);
 }
 
 async function getChapters(id){
-  return await apiGet(`/api/manga/${encodeURIComponent(id)}`);
+  return await apiGet(`/chapters/${encodeURIComponent(id)}`);
 }
 
 async function openReaderInfo(id, fallback){
@@ -104,16 +104,16 @@ async function openReaderInfo(id, fallback){
   pageSel.innerHTML = '';
 
   const chs = await getChapters(d.id || id);
-  const chaptersArr = (chs.chapters || chs.data || chs) || [];
+  const chaptersArr = (chs.data || chs) || [];
   chaptersArr.forEach(ch => {
     const opt=document.createElement('option');
-    // MangaHook API uses { id, title, chapterNumber }
-    opt.value = JSON.stringify({ id: d.id || id, chapterNumber: ch.id || ch.chapterNumber, lang: 'en' });
-    opt.textContent = ch.title || `Ch. ${ch.chapterNumber || ch.id}`;
+    // Node API uses { chapterNumber, lang, id }
+    opt.value = JSON.stringify({ id: d.id || id, chapterNumber: ch.chapterNumber, lang: ch.lang || 'en' });
+    opt.textContent = `Ch. ${ch.chapterNumber} (${ch.lang || 'en'})`;
     chapterSel.appendChild(opt);
   });
   if (chaptersArr.length) {
-    chapterSel.value = JSON.stringify({ id: d.id || id, chapterNumber: chaptersArr[0].id || chaptersArr[0].chapterNumber, lang: 'en' });
+    chapterSel.value = JSON.stringify({ id: d.id || id, chapterNumber: chaptersArr[0].chapterNumber, lang: chaptersArr[0].lang || 'en' });
     const c = JSON.parse(chapterSel.value);
     await loadChapterPagesNode(c.id, c.lang, c.chapterNumber);
   }
@@ -122,9 +122,10 @@ async function openReaderInfo(id, fallback){
 }
 
 async function loadChapterPagesNode(id, lang, chapterNumber){
-  // MangaHook uses /api/manga/:id/:ch endpoint
-  const data = await apiGet(`/api/manga/${encodeURIComponent(id)}/${encodeURIComponent(chapterNumber)}`);
-  currentPages = (data.data || []).map(p => p.url || p.image);
+  // default to English if none
+  const useLang = lang || 'en';
+  const data = await apiGet(`/read/${encodeURIComponent(id)}/${encodeURIComponent(useLang)}/${encodeURIComponent(chapterNumber)}`);
+  currentPages = (data.data || []).map(p => p.url);
   currentPageIndex = 0;
   const pageSel = document.getElementById('page');
   pageSel.innerHTML = '';
@@ -242,10 +243,12 @@ function debouncedApplyFilters(){ clearTimeout(debounceTimer); debounceTimer = s
 
 async function loadMoreTrending(){
   if (isLoadingTrending) return; isLoadingTrending = true;
-  // MangaHook API pagination
+  // For Node API, trending is not paginated; fall back to browse all
+  const type = document.getElementById('filter-type').value || 'all';
+  const sort = document.getElementById('filter-sort').value || 'default';
   window._browsePage = (window._browsePage||1) + 1;
-  const type = document.getElementById('filter-type').value || 'trending';
-  const data = await apiGet(`/api/mangaList?type=${encodeURIComponent(type)}&page=${window._browsePage}`);
+  const query = type==='all' ? 'all' : type;
+  const data = await apiGet(`/all/${encodeURIComponent(query)}?sort=${encodeURIComponent(sort)}&page=${window._browsePage}`);
   const more = data.data || [];
   trendingItems = trendingItems.concat(more);
   applyFilters();
@@ -254,9 +257,9 @@ async function loadMoreTrending(){
 
 async function loadMoreUpdates(){
   if (isLoadingUpdates) return; isLoadingUpdates = true;
-  // MangaHook API pagination
+  // For Node API, fallback to browse all page increment
   window._updatesPage = (window._updatesPage||1) + 1;
-  const data = await apiGet(`/api/mangaList?type=newest&page=${window._updatesPage}`);
+  const data = await apiGet(`/all/all?sort=latest&page=${window._updatesPage}`);
   const more = data.data || [];
   featuredItems = featuredItems.concat(more);
   renderUpdates(featuredItems);
@@ -272,4 +275,3 @@ function createObserver(targetId, callback){
   });
   io.observe(el);
 }
-
