@@ -1,159 +1,301 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Manga Stream</title>
-
-  <link rel="icon" href="/logo.png" type="image/png" />
-  <meta name="theme-color" content="#0b0b10" />
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="preload" href="css/style.css" as="style">
-  <link rel="preload" href="js/app.js" as="script">
-  <script defer src="js/app.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Manga Reader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .manga-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .manga-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .manga-card:hover {
+            transform: translateY(-5px);
+        }
+        .manga-cover {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+        }
+        .manga-info {
+            padding: 15px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .search-box {
+            margin: 20px 0;
+            text-align: center;
+        }
+        input {
+            padding: 10px;
+            width: 60%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .chapter-list {
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
-
 <body>
-  <header class="site-header">
-    <div class="container nav">
-      <a class="brand" href="#">Manga<span>Stream</span></a>
-      <nav class="menu">
-        <a href="#trending">Trending</a>
-        <a href="#updates">Updates</a>
-        <button class="search-button" onclick="openSearchModal()">Search</button>
-      </nav>
-    </div>
-  </header>
-
-  <section class="hero" id="hero">
-    <div class="container hero-inner">
-      <h1>Read Manga Instantly</h1>
-      <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
-      <div class="hero-actions">
-        <button class="btn" onclick="document.getElementById('trending').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
-        <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
-      </div>
-    </div>
-    <div class="hero-gradient"></div>
-  </section>
-
-  <main>
-    <section class="section" id="trending">
-      <div class="container section-header">
-        <h2>Trending Manga</h2>
-      </div>
-      <div class="container filters" id="filters">
-        <div class="filter">
-          <label for="filter-type">Type</label>
-          <select id="filter-type" onchange="applyFilters()">
-            <option value="all" selected>All</option>
-            <option value="manga">Manga</option>
-            <option value="manhwa">Manhwa</option>
-            <option value="manhua">Manhua</option>
-          </select>
-        </div>
-        <div class="filter">
-          <label for="filter-lang">Language</label>
-          <select id="filter-lang" onchange="applyFilters()">
-            <option value="all" selected>All</option>
-            <option value="en">English</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="zh">Chinese</option>
-          </select>
-        </div>
-        <div class="filter">
-          <label for="filter-sort">Sort</label>
-          <select id="filter-sort" onchange="applyFilters()">
-            <option value="default" selected>Default</option>
-            <option value="latest">Latest</option>
-            <option value="most-viewed">Most Viewed</option>
-            <option value="top-rated">Top Rated</option>
-            <option value="new">New</option>
-          </select>
-        </div>
-        <div class="filter">
-          <label for="filter-rating">Min Rating</label>
-          <input type="range" id="filter-rating" min="0" max="10" step="1" value="0" oninput="updateRatingLabel(this.value)" onchange="applyFilters()" />
-          <span id="filter-rating-value">0</span>
-        </div>
-        <div class="filter">
-          <label for="filter-genre">Genre</label>
-          <input type="text" id="filter-genre" placeholder="e.g. action" oninput="debouncedApplyFilters()" />
-        </div>
-      </div>
-      <div class="container scroller" id="manga-list"></div>
-      <div class="container load-more-row"><button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button></div>
-      <div id="sentinel-trending" style="height:1px"></div>
-    </section>
-
-    <section class="section" id="updates">
-      <div class="container section-header">
-        <h2>Latest Updates</h2>
-        <p class="muted">Recently updated chapters</p>
-      </div>
-      <div class="container grid" id="updates-list"></div>
-      <div class="container load-more-row"><button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button></div>
-      <div id="sentinel-updates" style="height:1px"></div>
-    </section>
-  </main>
-
-  <!-- Search modal -->
-  <div class="search-modal" id="search-modal" aria-hidden="true">
-    <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
+    <h1>Manga Explorer</h1>
+    
     <div class="search-box">
-      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
-      <div class="results" id="search-results"></div>
-      <div class="load-more-row"><button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button></div>
-      <div id="sentinel-search" style="height:1px"></div>
+        <input type="text" id="searchInput" placeholder="Search manga...">
     </div>
-  </div>
-
-  <!-- Reader Modal -->
-  <div class="modal" id="reader-modal" aria-hidden="true">
-    <div class="modal-content">
-      <button class="close" onclick="closeReader()" aria-label="Close">×</button>
-
-      <div class="reader-head">
-        <div class="reader-meta">
-          <img id="reader-cover" alt="Cover" />
-          <div>
-            <h3 id="reader-title"></h3>
-            <p id="reader-description" class="muted"></p>
-          </div>
-        </div>
-        <div class="reader-controls">
-          <label for="chapter">Chapter</label>
-          <select id="chapter" onchange="changeChapter()"></select>
-          <label for="page">Page</label>
-          <select id="page" onchange="changePage()"></select>
-          <div class="spacer"></div>
-          <button class="btn small" onclick="prevPage()" aria-label="Previous page">◀</button>
-          <button class="btn small" onclick="nextPage()" aria-label="Next page">▶</button>
-        </div>
-      </div>
-
-      <div class="reader-stage">
-        <img id="reader-image" alt="Manga page" />
-      </div>
+    
+    <div id="mangaContainer" class="manga-grid">
+        <!-- Manga will load here -->
     </div>
-  </div>
 
-  <footer class="site-footer">
-    <div class="container footer-inner">
-      <p>© 2025 MangaStream. All rights reserved.</p>
-      <div class="links">
-        <a href="/disclaimer.html">Disclaimer</a>
-        <a href="/about.html">About</a>
-      </div>
+    <script>
+        // Simple MangaDex API integration
+        document.addEventListener('DOMContentLoaded', function() {
+            const mangaContainer = document.getElementById('mangaContainer');
+            const searchInput = document.getElementById('searchInput');
+            
+            // Function to fetch manga from MangaDex
+            async function fetchManga(query = '') {
+                mangaContainer.innerHTML = '<p>Loading manga...</p>';
+                
+                try {
+                    let url = 'https://api.mangadex.org/manga';
+                    if (query) {
+                        url += `?title=${encodeURIComponent(query)}&limit=20`;
+                    } else {
+                        url += '?includes[]=cover_art&limit=20&order[latestUploadedChapter]=desc';
+                    }
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (data.data && data.data.length > 0) {
+                        displayManga(data.data);
+                    } else {
+                        mangaContainer.innerHTML = '<p>No manga found. Try another search.</p>';
+                    }
+                } catch (error) {
+                    mangaContainer.innerHTML = `<p>Error loading manga: ${error.message}</p>`;
+                    console.error('Manga fetch error:', error);
+                }
+            }
+            
+            // Display manga results
+            function displayManga(mangaList) {
+                mangaContainer.innerHTML = '';
+                
+                mangaList.forEach(manga => {
+                    // Get cover image
+                    const coverRel = manga.relationships.find(rel => rel.type === 'cover_art');
+                    const coverFileName = coverRel ? coverRel.attributes.fileName : '';
+                    const coverUrl = coverFileName ? 
+                        `https://manga.cloudflarecdn.com/2b328bd6-0154-4a3c-8e64-8b59d114d245/${manga.id}/${coverFileName}.256.jpg` : 
+                        'https://via.placeholder.com/200x300?text=No+Cover';
+                    
+                    // Get title (prefer English)
+                    const title = manga.attributes.title.en || 
+                                 Object.values(manga.attributes.title)[0] || 
+                                 'Untitled Manga';
+                    
+                    // Get latest chapter
+                    const latestChapter = manga.attributes.lastChapter || 'N/A';
+                    
+                    // Create manga card
+                    const mangaCard = document.createElement('div');
+                    mangaCard.className = 'manga-card';
+                    mangaCard.innerHTML = `
+                        <img src="${coverUrl}" alt="${title}" class="manga-cover">
+                        <div class="manga-info">
+                            <h3>${title}</h3>
+                            <div class="chapter-list">
+                                Latest Chapter: ${latestChapter}
+                            </div>
+                        </div>
+                    `;
+                    
+                    mangaContainer.appendChild(mangaCard);
+                });
+            }
+            
+            // Initial load
+            fetchManga();
+            
+            // Search functionality
+            searchInput.addEventListener('keyup', function(e) {
+                if (e.key === 'Enter' || this.value.length > 2) {
+                    fetchManga(this.value);
+                }
+            });
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Manga Reader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .manga-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .manga-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .manga-card:hover {
+            transform: translateY(-5px);
+        }
+        .manga-cover {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+        }
+        .manga-info {
+            padding: 15px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .search-box {
+            margin: 20px 0;
+            text-align: center;
+        }
+        input {
+            padding: 10px;
+            width: 60%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .chapter-list {
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Manga Explorer</h1>
+    
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search manga...">
     </div>
-  </footer>
+    
+    <div id="mangaContainer" class="manga-grid">
+        <!-- Manga will load here -->
+    </div>
 
+    <script>
+        // Simple MangaDex API integration
+        document.addEventListener('DOMContentLoaded', function() {
+            const mangaContainer = document.getElementById('mangaContainer');
+            const searchInput = document.getElementById('searchInput');
+            
+            // Function to fetch manga from MangaDex
+            async function fetchManga(query = '') {
+                mangaContainer.innerHTML = '<p>Loading manga...</p>';
+                
+                try {
+                    let url = 'https://api.mangadex.org/manga';
+                    if (query) {
+                        url += `?title=${encodeURIComponent(query)}&limit=20`;
+                    } else {
+                        url += '?includes[]=cover_art&limit=20&order[latestUploadedChapter]=desc';
+                    }
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (data.data && data.data.length > 0) {
+                        displayManga(data.data);
+                    } else {
+                        mangaContainer.innerHTML = '<p>No manga found. Try another search.</p>';
+                    }
+                } catch (error) {
+                    mangaContainer.innerHTML = `<p>Error loading manga: ${error.message}</p>`;
+                    console.error('Manga fetch error:', error);
+                }
+            }
+            
+            // Display manga results
+            function displayManga(mangaList) {
+                mangaContainer.innerHTML = '';
+                
+                mangaList.forEach(manga => {
+                    // Get cover image
+                    const coverRel = manga.relationships.find(rel => rel.type === 'cover_art');
+                    const coverFileName = coverRel ? coverRel.attributes.fileName : '';
+                    const coverUrl = coverFileName ? 
+                        `https://manga.cloudflarecdn.com/2b328bd6-0154-4a3c-8e64-8b59d114d245/${manga.id}/${coverFileName}.256.jpg` : 
+                        'https://via.placeholder.com/200x300?text=No+Cover';
+                    
+                    // Get title (prefer English)
+                    const title = manga.attributes.title.en || 
+                                 Object.values(manga.attributes.title)[0] || 
+                                 'Untitled Manga';
+                    
+                    // Get latest chapter
+                    const latestChapter = manga.attributes.lastChapter || 'N/A';
+                    
+                    // Create manga card
+                    const mangaCard = document.createElement('div');
+                    mangaCard.className = 'manga-card';
+                    mangaCard.innerHTML = `
+                        <img src="${coverUrl}" alt="${title}" class="manga-cover">
+                        <div class="manga-info">
+                            <h3>${title}</h3>
+                            <div class="chapter-list">
+                                Latest Chapter: ${latestChapter}
+                            </div>
+                        </div>
+                    `;
+                    
+                    mangaContainer.appendChild(mangaCard);
+                });
+            }
+            
+            // Initial load
+            fetchManga();
+            
+            // Search functionality
+            searchInput.addEventListener('keyup', function(e) {
+                if (e.key === 'Enter' || this.value.length > 2) {
+                    fetchManga(this.value);
+                }
+            });
+        });
+    </script>
 </body>
 </html>
-
