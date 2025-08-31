@@ -1,75 +1,158 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>AniList + GitHub Pages — demo</title>
-  <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:800px;margin:32px auto;padding:0 16px}
-    .card{display:flex;gap:12px;margin:12px 0;padding:12px;border:1px solid #eee;border-radius:8px}
-    img{width:96px;height:auto;border-radius:6px}
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manga Stream</title>
+
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <meta name="theme-color" content="#0b0b10" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preload" href="css/style.css" as="style">
+  <link rel="preload" href="js/app.js" as="script">
+  <script defer src="js/app.js"></script>
 </head>
+
 <body>
-  <h1>AniList search (public data)</h1>
-  <input id="q" placeholder="Search anime (e.g. Naruto)" />
-  <button id="search">Search</button>
-  <div id="results"></div>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="#">Manga<span>Stream</span></a>
+      <nav class="menu">
+        <a href="#trending">Trending</a>
+        <a href="#updates">Updates</a>
+        <button class="search-button" onclick="openSearchModal()">Search</button>
+      </nav>
+    </div>
+  </header>
 
-  <script>
-    const query = `
-      query ($search: String) {
-        Media(search: $search, type: ANIME) {
-          id
-          title { romaji english native }
-          coverImage { large }
-          description(asHtml: false)
-          episodes
-          averageScore
-        }
-      }`;
+  <section class="hero" id="hero">
+    <div class="container hero-inner">
+      <h1>Read Manga Instantly</h1>
+      <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
+      <div class="hero-actions">
+        <button class="btn" onclick="document.getElementById('trending').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
+        <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
+      </div>
+    </div>
+    <div class="hero-gradient"></div>
+  </section>
 
-    async function search(q){
-      const res = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ query, variables: { search: q } })
-      });
+  <main>
+    <section class="section" id="trending">
+      <div class="container section-header">
+        <h2>Trending Manga</h2>
+      </div>
+      <div class="container filters" id="filters">
+        <div class="filter">
+          <label for="filter-type">Type</label>
+          <select id="filter-type" onchange="applyFilters()">
+            <option value="all" selected>All</option>
+            <option value="manga">Manga</option>
+            <option value="manhwa">Manhwa</option>
+            <option value="manhua">Manhua</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-lang">Language</label>
+          <select id="filter-lang" onchange="applyFilters()">
+            <option value="all" selected>All</option>
+            <option value="en">English</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-sort">Sort</label>
+          <select id="filter-sort" onchange="applyFilters()">
+            <option value="default" selected>Default</option>
+            <option value="latest">Latest</option>
+            <option value="most-viewed">Most Viewed</option>
+            <option value="top-rated">Top Rated</option>
+            <option value="new">New</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label for="filter-rating">Min Rating</label>
+          <input type="range" id="filter-rating" min="0" max="10" step="1" value="0" oninput="updateRatingLabel(this.value)" onchange="applyFilters()" />
+          <span id="filter-rating-value">0</span>
+        </div>
+        <div class="filter">
+          <label for="filter-genre">Genre</label>
+          <input type="text" id="filter-genre" placeholder="e.g. action" oninput="debouncedApplyFilters()" />
+        </div>
+      </div>
+      <div class="container scroller" id="manga-list"></div>
+      <div class="container load-more-row"><button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button></div>
+      <div id="sentinel-trending" style="height:1px"></div>
+    </section>
 
-      if (!res.ok){
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      }
+    <section class="section" id="updates">
+      <div class="container section-header">
+        <h2>Latest Updates</h2>
+        <p class="muted">Recently updated chapters</p>
+      </div>
+      <div class="container grid" id="updates-list"></div>
+      <div class="container load-more-row"><button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button></div>
+      <div id="sentinel-updates" style="height:1px"></div>
+    </section>
+  </main>
 
-      const payload = await res.json();
-      return payload.data && payload.data.Media ? payload.data.Media : null;
-    }
+  <!-- Search modal -->
+  <div class="search-modal" id="search-modal" aria-hidden="true">
+    <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
+      <div class="results" id="search-results"></div>
+      <div class="load-more-row"><button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button></div>
+      <div id="sentinel-search" style="height:1px"></div>
+    </div>
+  </div>
 
-    document.getElementById('search').addEventListener('click', async ()=>{
-      const q = document.getElementById('q').value.trim();
-      const results = document.getElementById('results');
-      results.innerHTML = 'Loading...';
-      try {
-        const media = await search(q);
-        if(!media){ results.innerHTML = 'No results.'; return; }
-        results.innerHTML = `
-          <div class="card">
-            <img src="${media.coverImage.large}" alt="cover"/>
-            <div>
-              <h3>${media.title.english || media.title.romaji}</h3>
-              <p>Episodes: ${media.episodes ?? '—'} • Score: ${media.averageScore ?? '—'}</p>
-              <p style="max-height:5.4em;overflow:hidden">${(media.description || '').replace(/<\/?[^>]+(>|$)/g, '')}</p>
-            </div>
+  <!-- Reader Modal -->
+  <div class="modal" id="reader-modal" aria-hidden="true">
+    <div class="modal-content">
+      <button class="close" onclick="closeReader()" aria-label="Close">×</button>
+
+      <div class="reader-head">
+        <div class="reader-meta">
+          <img id="reader-cover" alt="Cover" />
+          <div>
+            <h3 id="reader-title"></h3>
+            <p id="reader-description" class="muted"></p>
           </div>
-        `;
-      } catch (err) {
-        results.innerHTML = `<pre style="color:crimson">${err.message}</pre>`;
-        console.error(err);
-      }
-    });
-  </script>
+        </div>
+        <div class="reader-controls">
+          <label for="chapter">Chapter</label>
+          <select id="chapter" onchange="changeChapter()"></select>
+          <label for="page">Page</label>
+          <select id="page" onchange="changePage()"></select>
+          <div class="spacer"></div>
+          <button class="btn small" onclick="prevPage()" aria-label="Previous page">◀</button>
+          <button class="btn small" onclick="nextPage()" aria-label="Next page">▶</button>
+        </div>
+      </div>
+
+      <div class="reader-stage">
+        <img id="reader-image" alt="Manga page" />
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>© 2025 MangaStream. All rights reserved.</p>
+      <div class="links">
+        <a href="/disclaimer.html">Disclaimer</a>
+        <a href="/about.html">About</a>
+      </div>
+    </div>
+  </footer>
+
 </body>
 </html>
