@@ -1,301 +1,75 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Manga Reader</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .manga-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .manga-card {
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        .manga-card:hover {
-            transform: translateY(-5px);
-        }
-        .manga-cover {
-            width: 100%;
-            height: 300px;
-            object-fit: cover;
-        }
-        .manga-info {
-            padding: 15px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .search-box {
-            margin: 20px 0;
-            text-align: center;
-        }
-        input {
-            padding: 10px;
-            width: 60%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .chapter-list {
-            margin-top: 15px;
-            font-size: 0.9em;
-        }
-    </style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>AniList + GitHub Pages — demo</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:800px;margin:32px auto;padding:0 16px}
+    .card{display:flex;gap:12px;margin:12px 0;padding:12px;border:1px solid #eee;border-radius:8px}
+    img{width:96px;height:auto;border-radius:6px}
+  </style>
 </head>
 <body>
-    <h1>Manga Explorer</h1>
-    
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Search manga...">
-    </div>
-    
-    <div id="mangaContainer" class="manga-grid">
-        <!-- Manga will load here -->
-    </div>
+  <h1>AniList search (public data)</h1>
+  <input id="q" placeholder="Search anime (e.g. Naruto)" />
+  <button id="search">Search</button>
+  <div id="results"></div>
 
-    <script>
-        // Simple MangaDex API integration
-        document.addEventListener('DOMContentLoaded', function() {
-            const mangaContainer = document.getElementById('mangaContainer');
-            const searchInput = document.getElementById('searchInput');
-            
-            // Function to fetch manga from MangaDex
-            async function fetchManga(query = '') {
-                mangaContainer.innerHTML = '<p>Loading manga...</p>';
-                
-                try {
-                    let url = 'https://api.mangadex.org/manga';
-                    if (query) {
-                        url += `?title=${encodeURIComponent(query)}&limit=20`;
-                    } else {
-                        url += '?includes[]=cover_art&limit=20&order[latestUploadedChapter]=desc';
-                    }
-                    
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    
-                    if (data.data && data.data.length > 0) {
-                        displayManga(data.data);
-                    } else {
-                        mangaContainer.innerHTML = '<p>No manga found. Try another search.</p>';
-                    }
-                } catch (error) {
-                    mangaContainer.innerHTML = `<p>Error loading manga: ${error.message}</p>`;
-                    console.error('Manga fetch error:', error);
-                }
-            }
-            
-            // Display manga results
-            function displayManga(mangaList) {
-                mangaContainer.innerHTML = '';
-                
-                mangaList.forEach(manga => {
-                    // Get cover image
-                    const coverRel = manga.relationships.find(rel => rel.type === 'cover_art');
-                    const coverFileName = coverRel ? coverRel.attributes.fileName : '';
-                    const coverUrl = coverFileName ? 
-                        `https://manga.cloudflarecdn.com/2b328bd6-0154-4a3c-8e64-8b59d114d245/${manga.id}/${coverFileName}.256.jpg` : 
-                        'https://via.placeholder.com/200x300?text=No+Cover';
-                    
-                    // Get title (prefer English)
-                    const title = manga.attributes.title.en || 
-                                 Object.values(manga.attributes.title)[0] || 
-                                 'Untitled Manga';
-                    
-                    // Get latest chapter
-                    const latestChapter = manga.attributes.lastChapter || 'N/A';
-                    
-                    // Create manga card
-                    const mangaCard = document.createElement('div');
-                    mangaCard.className = 'manga-card';
-                    mangaCard.innerHTML = `
-                        <img src="${coverUrl}" alt="${title}" class="manga-cover">
-                        <div class="manga-info">
-                            <h3>${title}</h3>
-                            <div class="chapter-list">
-                                Latest Chapter: ${latestChapter}
-                            </div>
-                        </div>
-                    `;
-                    
-                    mangaContainer.appendChild(mangaCard);
-                });
-            }
-            
-            // Initial load
-            fetchManga();
-            
-            // Search functionality
-            searchInput.addEventListener('keyup', function(e) {
-                if (e.key === 'Enter' || this.value.length > 2) {
-                    fetchManga(this.value);
-                }
-            });
-        });
-    </script>
-</body>
-</html><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Manga Reader</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
+  <script>
+    const query = `
+      query ($search: String) {
+        Media(search: $search, type: ANIME) {
+          id
+          title { romaji english native }
+          coverImage { large }
+          description(asHtml: false)
+          episodes
+          averageScore
         }
-        .manga-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .manga-card {
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        .manga-card:hover {
-            transform: translateY(-5px);
-        }
-        .manga-cover {
-            width: 100%;
-            height: 300px;
-            object-fit: cover;
-        }
-        .manga-info {
-            padding: 15px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .search-box {
-            margin: 20px 0;
-            text-align: center;
-        }
-        input {
-            padding: 10px;
-            width: 60%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .chapter-list {
-            margin-top: 15px;
-            font-size: 0.9em;
-        }
-    </style>
-</head>
-<body>
-    <h1>Manga Explorer</h1>
-    
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Search manga...">
-    </div>
-    
-    <div id="mangaContainer" class="manga-grid">
-        <!-- Manga will load here -->
-    </div>
+      }`;
 
-    <script>
-        // Simple MangaDex API integration
-        document.addEventListener('DOMContentLoaded', function() {
-            const mangaContainer = document.getElementById('mangaContainer');
-            const searchInput = document.getElementById('searchInput');
-            
-            // Function to fetch manga from MangaDex
-            async function fetchManga(query = '') {
-                mangaContainer.innerHTML = '<p>Loading manga...</p>';
-                
-                try {
-                    let url = 'https://api.mangadex.org/manga';
-                    if (query) {
-                        url += `?title=${encodeURIComponent(query)}&limit=20`;
-                    } else {
-                        url += '?includes[]=cover_art&limit=20&order[latestUploadedChapter]=desc';
-                    }
-                    
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    
-                    if (data.data && data.data.length > 0) {
-                        displayManga(data.data);
-                    } else {
-                        mangaContainer.innerHTML = '<p>No manga found. Try another search.</p>';
-                    }
-                } catch (error) {
-                    mangaContainer.innerHTML = `<p>Error loading manga: ${error.message}</p>`;
-                    console.error('Manga fetch error:', error);
-                }
-            }
-            
-            // Display manga results
-            function displayManga(mangaList) {
-                mangaContainer.innerHTML = '';
-                
-                mangaList.forEach(manga => {
-                    // Get cover image
-                    const coverRel = manga.relationships.find(rel => rel.type === 'cover_art');
-                    const coverFileName = coverRel ? coverRel.attributes.fileName : '';
-                    const coverUrl = coverFileName ? 
-                        `https://manga.cloudflarecdn.com/2b328bd6-0154-4a3c-8e64-8b59d114d245/${manga.id}/${coverFileName}.256.jpg` : 
-                        'https://via.placeholder.com/200x300?text=No+Cover';
-                    
-                    // Get title (prefer English)
-                    const title = manga.attributes.title.en || 
-                                 Object.values(manga.attributes.title)[0] || 
-                                 'Untitled Manga';
-                    
-                    // Get latest chapter
-                    const latestChapter = manga.attributes.lastChapter || 'N/A';
-                    
-                    // Create manga card
-                    const mangaCard = document.createElement('div');
-                    mangaCard.className = 'manga-card';
-                    mangaCard.innerHTML = `
-                        <img src="${coverUrl}" alt="${title}" class="manga-cover">
-                        <div class="manga-info">
-                            <h3>${title}</h3>
-                            <div class="chapter-list">
-                                Latest Chapter: ${latestChapter}
-                            </div>
-                        </div>
-                    `;
-                    
-                    mangaContainer.appendChild(mangaCard);
-                });
-            }
-            
-            // Initial load
-            fetchManga();
-            
-            // Search functionality
-            searchInput.addEventListener('keyup', function(e) {
-                if (e.key === 'Enter' || this.value.length > 2) {
-                    fetchManga(this.value);
-                }
-            });
-        });
-    </script>
+    async function search(q){
+      const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ query, variables: { search: q } })
+      });
+
+      if (!res.ok){
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+
+      const payload = await res.json();
+      return payload.data && payload.data.Media ? payload.data.Media : null;
+    }
+
+    document.getElementById('search').addEventListener('click', async ()=>{
+      const q = document.getElementById('q').value.trim();
+      const results = document.getElementById('results');
+      results.innerHTML = 'Loading...';
+      try {
+        const media = await search(q);
+        if(!media){ results.innerHTML = 'No results.'; return; }
+        results.innerHTML = `
+          <div class="card">
+            <img src="${media.coverImage.large}" alt="cover"/>
+            <div>
+              <h3>${media.title.english || media.title.romaji}</h3>
+              <p>Episodes: ${media.episodes ?? '—'} • Score: ${media.averageScore ?? '—'}</p>
+              <p style="max-height:5.4em;overflow:hidden">${(media.description || '').replace(/<\/?[^>]+(>|$)/g, '')}</p>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        results.innerHTML = `<pre style="color:crimson">${err.message}</pre>`;
+        console.error(err);
+      }
+    });
+  </script>
 </body>
 </html>
