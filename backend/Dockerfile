@@ -19,7 +19,7 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 ENV PYTHONUNBUFFERED=1
 ENV TZ=UTC
-ENV SELENIUM_BROWSER=chromium  # 👈 Disable Selenium Manager auto-download
+ENV SELENIUM_BROWSER=chromium
 
 WORKDIR /app
 COPY requirements.txt .
