@@ -4,5 +4,4 @@ selenium
 beautifulsoup4
 requests
 img2pdf
-webdriver-manager
 lxml
