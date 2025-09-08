@@ -36,27 +36,36 @@ def getChapters(manga_name, Ch_Start, Ch_End):
     options.add_argument("--disable-extensions")
     options.add_argument("--remote-debugging-port=9222")
     options.add_argument("--disable-images")
-    options.add_argument("--disable-javascript")  # Optional: speeds up if JS not needed
+    options.add_argument("--disable-javascript")
 
-    # 👇 Point to Chromium binary installed via Docker
+    # 👇 Point to Chromium binary
     options.binary_location = "/usr/bin/chromium"
 
-    # 👇 Use system chromedriver
-    service = ChromeService(executable_path="/usr/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=options)
+    # 👇 CRITICAL: Disable Selenium Manager auto-download
+    # Force Selenium to use ONLY the system chromedriver
+    service = ChromeService(
+        executable_path="/usr/bin/chromedriver",
+        # This disables auto-download by Selenium Manager
+        log_output=None  # Optional: reduces noise
+    )
 
+    # 👇 SET ENV VAR TO DISABLE SELENIUM MANAGER
+    os.environ['SELENIUM_REMOTE_URL'] = ''  # Disable remote
+    os.environ['SELENIUM_BROWSER'] = 'chromium'  # Hint to use chromium
+
+    driver = None
     try:
+        driver = webdriver.Chrome(service=service, options=options)
         url = f'https://www.mangaread.org/manga/{manga_name}/'
         driver.get(url)
-        time.sleep(5)  # Wait for JS to load (if not disabled)
+        time.sleep(5)
 
-        # Try to click "Show More" if exists
         try:
             show_more_button = driver.find_element(By.CLASS_NAME, 'chapter-readmore')
             show_more_button.click()
             time.sleep(2)
         except:
-            pass  # Ignore if button not found
+            pass
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         chapters = soup.find_all('li', class_='wp-manga-chapter')
@@ -81,8 +90,8 @@ def getChapters(manga_name, Ch_Start, Ch_End):
         print(f"[getChapters ERROR] {str(e)}")
         raise e
     finally:
-        driver.quit()
-
+        if driver:
+            driver.quit()
 
 def scrape_img(ch_link):
     try:
@@ -296,3 +305,4 @@ def download_file():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
+
