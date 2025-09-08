@@ -134,16 +134,19 @@ async function getChapters(id){
   return [];
 }
 
-async function getChapterPages(chapterSlug){
-  if (!chapterSlug) return [];
+async function getChapters(mangaSlug) {
+  if (!mangaSlug) return [];
   try {
-    const data = await apiGet(`/api/chapter/${encodeURIComponent(chapterSlug)}`).catch(()=>null);
-    if (data) return data.pages || data.images || data.data || data;
-  } catch(e){ console.warn('getChapterPages error', e); }
+    const data = await apiGet(`/api/chapters/${encodeURIComponent(mangaSlug)}?start=1&end=50`);
+    if (!data.success) throw new Error(data.error);
+    return data.chapters.map((link, idx) => ({
+      id: `ch-${idx}`,
+      slug: link.trim(), // Clean whitespace!
+      chapterNumber: link.match(/chapter-(\d+)/i)?.[1] || `Chapter ${idx + 1}`
+    }));
+  } catch(e){ console.warn('getChapters error', e); }
   return [];
 }
-
-/* ---- UI rendering (hooks to your HTML IDs) ---- */
 
 function renderTrending(items){
   const list = document.getElementById('manga-list');
@@ -353,4 +356,5 @@ window.changeChapter = changeChapter;
 window.changePage = changePage;
 window.prevPage = prevPage;
 window.nextPage = nextPage;
+
 
