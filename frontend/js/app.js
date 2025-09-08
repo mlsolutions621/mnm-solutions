@@ -3,7 +3,7 @@
    If you run MangaHook locally, set window.MR_BASE_OVERRIDE = 'http://localhost:3000' in console then reload.
 */
 
-const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://mangahook-api-zedu.onrender.com').replace(/\/+$/,'');
+const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://mnm-solutions.onrender.com').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], searchNext = null;
@@ -353,3 +353,4 @@ window.changeChapter = changeChapter;
 window.changePage = changePage;
 window.prevPage = prevPage;
 window.nextPage = nextPage;
+
