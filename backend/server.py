@@ -8,23 +8,21 @@ import re
 import img2pdf
 import shutil
 from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
 
 # --- Selenium Imports ---
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 app = Flask(__name__)
 CORS(app)
 
-# Simple in-memory job tracker (use Redis in production)
+# Simple in-memory job tracker
 download_jobs = {}
 
 # ======================
-# YOUR SCRAPING FUNCTIONS
+# SCRAPING FUNCTIONS
 # ======================
 
 def getChapters(manga_name, Ch_Start, Ch_End):
@@ -34,99 +32,137 @@ def getChapters(manga_name, Ch_Start, Ch_End):
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--disable-images")
+    options.add_argument("--disable-javascript")  # Optional: speeds up if JS not needed
 
-    service = ChromeService(ChromeDriverManager().install())
+    # 👇 Point to Chromium binary installed via Docker
+    options.binary_location = "/usr/bin/chromium"
+
+    # 👇 Use system chromedriver
+    service = ChromeService(executable_path="/usr/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=options)
 
-    url = f'https://www.mangaread.org/manga/{manga_name}/'
-    driver.get(url)
-    time.sleep(5)
-
     try:
-        show_more_button = driver.find_element(By.CLASS_NAME, 'chapter-readmore')
-        show_more_button.click()
-        time.sleep(2)
-    except:
-        pass  # Button may not exist
+        url = f'https://www.mangaread.org/manga/{manga_name}/'
+        driver.get(url)
+        time.sleep(5)  # Wait for JS to load (if not disabled)
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    chapters = soup.find_all('li', class_='wp-manga-chapter')
-    chapter_links = []
+        # Try to click "Show More" if exists
+        try:
+            show_more_button = driver.find_element(By.CLASS_NAME, 'chapter-readmore')
+            show_more_button.click()
+            time.sleep(2)
+        except:
+            pass  # Ignore if button not found
 
-    for chapter in chapters:
-        a_tag = chapter.find('a')
-        if not a_tag or not a_tag.has_attr('href'):
-            continue
-        ch_link = a_tag['href']
-        nums = re.findall(r'\d+', ch_link)
-        if not nums:
-            continue
-        nums = int(nums[0])
-        if Ch_Start <= nums <= Ch_End:
-            chapter_links.append(ch_link)
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        chapters = soup.find_all('li', class_='wp-manga-chapter')
+        chapter_links = []
 
-    driver.quit()
-    chapter_links.reverse()
-    return chapter_links
+        for chapter in chapters:
+            a_tag = chapter.find('a')
+            if not a_tag or not a_tag.has_attr('href'):
+                continue
+            ch_link = a_tag['href']
+            nums = re.findall(r'\d+', ch_link)
+            if not nums:
+                continue
+            nums = int(nums[0])
+            if Ch_Start <= nums <= Ch_End:
+                chapter_links.append(ch_link)
+
+        chapter_links.reverse()
+        return chapter_links
+
+    except Exception as e:
+        print(f"[getChapters ERROR] {str(e)}")
+        raise e
+    finally:
+        driver.quit()
 
 
 def scrape_img(ch_link):
-    response = requests.get(ch_link)
-    if response.status_code != 200:
+    try:
+        response = requests.get(ch_link, timeout=10)
+        if response.status_code != 200:
+            return []
+        soup = BeautifulSoup(response.text, 'lxml')
+        images = soup.find_all('img', class_='wp-manga-chapter-img')
+        img_urls = [img['src'].strip() for img in images if img.get('src') and img['src'].strip()]
+        return img_urls
+    except Exception as e:
+        print(f"[scrape_img ERROR] {str(e)}")
         return []
-    soup = BeautifulSoup(response.text, 'lxml')
-    images = soup.find_all('img', class_='wp-manga-chapter-img')
-    img_urls = [img['src'].strip() for img in images if img.get('src')]
-    return img_urls
 
 
 def download_images(image_urls, manga_name, ch_link, base_dir):
-    chFolder = f'Chapter-{ch_link.split("chapter-")[1].split("/")[0]}'
-    manga_directory = os.path.join(base_dir, manga_name)
-    directory_path = os.path.join(manga_directory, chFolder)
+    try:
+        chFolder = f'Chapter-{ch_link.split("chapter-")[1].split("/")[0]}'
+        manga_directory = os.path.join(base_dir, manga_name)
+        directory_path = os.path.join(manga_directory, chFolder)
 
-    os.makedirs(directory_path, exist_ok=True)
+        os.makedirs(directory_path, exist_ok=True)
 
-    for i, url in enumerate(image_urls):
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                image_path = os.path.join(directory_path, f'{manga_name}_{chFolder}_pg{i+1}.jpg')
-                if not os.path.exists(image_path):
-                    with open(image_path, 'wb') as f:
-                        f.write(response.content)
-        except Exception as e:
-            print(f"Failed to download {url}: {e}")
-            continue
+        for i, url in enumerate(image_urls):
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    # Use .jpg for consistency
+                    image_path = os.path.join(directory_path, f'{manga_name}_{chFolder}_pg{i+1}.jpg')
+                    if not os.path.exists(image_path):
+                        with open(image_path, 'wb') as f:
+                            f.write(response.content)
+            except Exception as e:
+                print(f"Failed to download {url}: {e}")
+                continue
 
-    print(f"Downloaded {chFolder}")
+        print(f"Downloaded {chFolder}")
+    except Exception as e:
+        print(f"[download_images ERROR] {str(e)}")
 
 
 def convertPDF(mangaDirectory):
-    chaptersList = os.listdir(mangaDirectory)
-    
-    for chapter in chaptersList:
-        chapter_path = os.path.join(mangaDirectory, chapter)
-        if not os.path.isdir(chapter_path):
-            continue
+    try:
+        chaptersList = os.listdir(mangaDirectory)
 
-        pdf_path = os.path.join(mangaDirectory, f'{chapter}.pdf')
-        if os.path.exists(pdf_path):
-            continue
-        
-        imgsList = [os.path.join(chapter_path, img) for img in os.listdir(chapter_path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        imgsList.sort(key=lambda x: int(re.findall(r'\d+', x.split('_pg')[-1])[0]) if re.findall(r'\d+', x.split('_pg')[-1]) else 0)
+        for chapter in chaptersList:
+            chapter_path = os.path.join(mangaDirectory, chapter)
+            if not os.path.isdir(chapter_path):
+                continue
 
-        if not imgsList:
-            continue
+            pdf_path = os.path.join(mangaDirectory, f'{chapter}.pdf')
+            if os.path.exists(pdf_path):
+                continue
 
-        try:
-            with open(pdf_path, 'wb') as f:
-                f.write(img2pdf.convert(imgsList))
-            shutil.rmtree(chapter_path)
-            print(f'Converted {chapter} to PDF')
-        except Exception as e:
-            print(f"PDF conversion failed for {chapter}: {e}")
+            imgsList = [
+                os.path.join(chapter_path, img)
+                for img in os.listdir(chapter_path)
+                if img.lower().endswith(('.png', '.jpg', '.jpeg'))
+            ]
+
+            if not imgsList:
+                continue
+
+            # Sort by page number
+            def sort_key(path):
+                match = re.findall(r'\d+', path.split('_pg')[-1])
+                return int(match[0]) if match else 0
+
+            imgsList.sort(key=sort_key)
+
+            try:
+                with open(pdf_path, 'wb') as f:
+                    f.write(img2pdf.convert(imgsList))
+                shutil.rmtree(chapter_path)
+                print(f'Converted {chapter} to PDF')
+            except Exception as e:
+                print(f"PDF conversion failed for {chapter}: {e}")
+
+    except Exception as e:
+        print(f"[convertPDF ERROR] {str(e)}")
 
 
 # ======================
@@ -145,6 +181,7 @@ def home():
             "file": "GET /download?path=..."
         }
     })
+
 
 @app.route('/api/chapters/<manga_name>', methods=['GET'])
 def api_get_chapters(manga_name):
@@ -185,24 +222,25 @@ def api_download_chapter():
     def background_task():
         try:
             base_dir = "/tmp/mangas"
-            download_images_dir = os.path.join(base_dir, manga_name)
-            os.makedirs(download_images_dir, exist_ok=True)
+            os.makedirs(base_dir, exist_ok=True)
 
-            # Scrape and download
+            # Scrape images
             img_urls = scrape_img(ch_link)
             if not img_urls:
                 download_jobs[job_id] = "failed|No images found"
                 return
 
+            # Download images
             download_images(img_urls, manga_name, ch_link, base_dir)
 
             # Convert to PDF
-            convertPDF(download_images_dir)
+            manga_dir = os.path.join(base_dir, manga_name)
+            convertPDF(manga_dir)
 
-            # Find generated PDF
+            # Check if PDF was created
             ch_num = ch_link.split("chapter-")[1].split("/")[0]
             pdf_filename = f"Chapter-{ch_num}.pdf"
-            pdf_path = os.path.join(download_images_dir, pdf_filename)
+            pdf_path = os.path.join(manga_dir, pdf_filename)
 
             if os.path.exists(pdf_path):
                 download_jobs[job_id] = f"done|{pdf_path}"
@@ -256,5 +294,5 @@ def download_file():
 # ======================
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
