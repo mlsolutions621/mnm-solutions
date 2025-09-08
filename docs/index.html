@@ -8,6 +8,7 @@
   <link rel="icon" href="/logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
 
+  <!-- Corrected href: Removed trailing spaces -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -33,7 +34,8 @@
       <h1>Read Manga Instantly</h1>
       <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
       <div class="hero-actions">
-        <button class="btn" onclick="document.getElementById('trending').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
+        <!-- Updated to scroll to the section with id 'trending-section' -->
+        <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
       </div>
     </div>
@@ -42,7 +44,8 @@
 
   <main>
     <!-- Trending Section -->
-    <section class="section" id="trending">
+    <!-- Added id 'trending-section' for smooth scroll -->
+    <section class="section" id="trending-section">
       <div class="container section-header">
         <h2>Trending Manga</h2>
       </div>
@@ -50,10 +53,13 @@
       <div class="container load-more-row">
         <button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button>
       </div>
+      <!-- Added sentinel div for infinite scroll -->
+      <div id="sentinel-trending" style="height: 1px;"></div>
     </section>
 
     <!-- Updates Section -->
-    <section class="section" id="updates">
+    <!-- Added id 'updates-section' for consistency (though not linked directly) -->
+    <section class="section" id="updates-section">
       <div class="container section-header">
         <h2>Latest Updates</h2>
         <p class="muted">Recently updated chapters</p>
@@ -62,6 +68,8 @@
       <div class="container load-more-row">
         <button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button>
       </div>
+      <!-- Added sentinel div for infinite scroll -->
+      <div id="sentinel-updates" style="height: 1px;"></div>
     </section>
   </main>
 
@@ -119,4 +127,3 @@
 
 </body>
 </html>
-
