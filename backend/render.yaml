@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mangastream-api
+    runtime: python3
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python server.py"
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PYTHONPATH
+        value: .
+    healthCheck:
+      enabled: true
+      path: /
+      timeoutSeconds: 10
