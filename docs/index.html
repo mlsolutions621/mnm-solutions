@@ -98,7 +98,7 @@
     </div>
   </div>
 
-  <!-- Reader Modal (Old - Kept for potential internal use, but not triggered by title clicks) -->
+  <!-- Reader Modal -->
   <div class="modal" id="reader-modal" aria-hidden="true">
     <div class="modal-content">
       <button class="close" onclick="closeReader()" aria-label="Close">×</button>
@@ -123,25 +123,6 @@
 
       <div class="reader-stage">
         <img id="reader-image" alt="Manga page" />
-      </div>
-    </div>
-  </div>
-
-  <!-- Details Modal (New) -->
-  <div class="modal" id="details-modal" aria-hidden="true">
-    <div class="modal-content">
-      <button class="close" onclick="closeDetailsModal()" aria-label="Close">×</button>
-      <div class="reader-head">
-        <div class="reader-meta">
-          <img id="details-cover" alt="Cover" />
-          <div>
-            <h3 id="details-title"></h3>
-            <p id="details-description" class="muted"></p>
-          </div>
-        </div>
-        <div class="reader-controls" style="justify-content: flex-end;">
-          <button class="btn" onclick="openDedicatedReaderFromDetails()">📖 Read Manga</button>
-        </div>
       </div>
     </div>
   </div>
