@@ -77,8 +77,23 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .reader-controls{display:flex;gap:10px;align-items:center}
 .reader-controls select{background:rgba(255,255,255,.05);color:#fff;border:1px solid rgba(255,255,255,.07);padding:8px 10px;border-radius:10px}
 .reader-controls .spacer{flex:1}
-.reader-stage{background:#000;display:flex;align-items:center;justify-content:center;padding:12px 12px 20px}
-.reader-stage img{max-width:100%;max-height:78vh;border-radius:12px;object-fit:contain}
+.reader-stage{
+  background:#000;
+  display:flex;
+  align-items:flex-start; /* ← Changed to allow scroll */
+  justify-content:center;
+  padding:12px 12px 20px;
+  overflow-y: auto; /* ← Scrollable */
+  max-height: 78vh; /* ← Constrain height */
+}
+.reader-stage img{
+  width:100%;
+  max-width:100%;
+  height: auto; /* ← Let image be tall */
+  border-radius:12px;
+  object-fit:contain;
+  display: block; /* ← Avoid inline spacing */
+}
 
 /* Footer */
 .site-footer{margin-top:24px;border-top:1px solid rgba(255,255,255,.05);padding:16px 0;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
