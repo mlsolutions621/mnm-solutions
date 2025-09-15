@@ -207,42 +207,37 @@ function renderTrending(items){
   if (!list) { showStatus('Missing container #manga-list', true); return; }
   list.innerHTML = '';
   items.forEach(m=>{
-    // Create container for each item
-    const itemContainer = document.createElement('div');
-    itemContainer.className = 'trending-item';
+    const card = document.createElement('div');
+    card.className = 'trending-card';
     
-    // Image
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = m.image || '';
     img.alt = m.title || '';
     img.title = m.title || '';
     img.style.cursor = 'pointer';
-    img.onclick = () => openReaderForFirstChapter(m.id);
+    img.onclick = () => openReader(m.id);
     
-    // Title
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'trending-title';
-    titleDiv.textContent = m.title || '';
-    titleDiv.onclick = () => openReaderForFirstChapter(m.id);
+    const title = document.createElement('h3');
+    title.className = 'trending-title';
+    title.textContent = m.title || '';
+    title.onclick = () => openReader(m.id);
     
-    // Description
-    const descDiv = document.createElement('div');
-    descDiv.className = 'trending-desc';
-    descDiv.textContent = m.description || '';
-    descDiv.onclick = () => openReaderForFirstChapter(m.id);
+    const desc = document.createElement('p');
+    desc.className = 'trending-desc';
+    desc.textContent = m.description || '';
+    desc.onclick = () => openReader(m.id);
     
-    // Read button
     const readBtn = document.createElement('button');
     readBtn.className = 'read-btn';
     readBtn.textContent = 'Read';
-    readBtn.onclick = () => openReaderForFirstChapter(m.id);
+    readBtn.onclick = () => openReader(m.id);
     
-    itemContainer.appendChild(img);
-    itemContainer.appendChild(titleDiv);
-    itemContainer.appendChild(descDiv);
-    itemContainer.appendChild(readBtn);
-    list.appendChild(itemContainer);
+    card.appendChild(img);
+    card.appendChild(title);
+    card.appendChild(desc);
+    card.appendChild(readBtn);
+    list.appendChild(card);
   });
 }
 
@@ -251,143 +246,36 @@ function renderUpdates(items){
   if (!grid) { showStatus('Missing container #updates-list', true); return; }
   grid.innerHTML = '';
   items.forEach(m=>{
-    const card = document.createElement('div'); card.className = 'card';
+    const card = document.createElement('div'); card.className = 'update-card';
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = m.image || '';
     img.alt = m.title || '';
-    img.onclick = () => openReaderForFirstChapter(m.id);
+    img.onclick = () => openReader(m.id);
     
-    const meta = document.createElement('div'); meta.className='meta';
-    const title = document.createElement('div'); title.className='title'; title.textContent = m.title || '';
-    title.onclick = () => openReaderForFirstChapter(m.id);
-    const chap = document.createElement('div'); chap.className='muted'; chap.style.fontSize='13px'; chap.textContent = m.latestChapter || '';
-    chap.onclick = () => openReaderForFirstChapter(m.id);
+    const meta = document.createElement('div'); meta.className='update-meta';
+    const title = document.createElement('div'); title.className='update-title'; title.textContent = m.title || '';
+    title.onclick = () => openReader(m.id);
+    const chap = document.createElement('div'); chap.className='update-chapter'; chap.textContent = m.latestChapter || '';
+    chap.onclick = () => openReader(m.id);
     
-    meta.appendChild(title);
-    meta.appendChild(chap);
-    
-    // Read button
     const readBtn = document.createElement('button');
     readBtn.className = 'read-btn';
     readBtn.textContent = 'Read';
-    readBtn.onclick = () => openReaderForFirstChapter(m.id);
+    readBtn.onclick = () => openReader(m.id);
     
     card.appendChild(img);
     card.appendChild(meta);
+    meta.appendChild(title);
+    meta.appendChild(chap);
     card.appendChild(readBtn);
     grid.appendChild(card);
   });
 }
 
-async function openReaderForFirstChapter(mangaId) {
-  const d = await getInfo(mangaId);
-  if (!d) return showStatus('Could not load manga info', true);
-  
-  currentManga = d;
-  document.getElementById('reader-cover').src = d.image || '';
-  document.getElementById('reader-title').textContent = d.title || '';
-  document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
-  
-  const chapterSel = document.getElementById('chapter'); 
-  if (chapterSel) chapterSel.innerHTML = '';
-  
-  const pageSel = document.getElementById('page'); 
-  if (pageSel) pageSel.innerHTML = '';
-  
-  const chaptersArr = Array.isArray(d.chapters) ? d.chapters.slice().reverse() : [];
-  
-  if (chaptersArr.length === 0) {
-    showStatus('No chapters available for this manga.', true);
-  }
-  
-  chaptersArr.forEach(ch=>{
-    const opt = document.createElement('option');
-    const label = ch.chapterId || 'Unknown';
-    opt.value = JSON.stringify({
-      mangaId: d.id,
-      chapterId: ch.chapterId
-    });
-    opt.textContent = `Ch. ${label}`;
-    chapterSel.appendChild(opt);
-  });
-  
-  if (chaptersArr.length) {
-    chapterSel.selectedIndex = 0;
-    const first = JSON.parse(chapterSel.value);
-    await loadChapterPages(first.mangaId, first.chapterId);
-  } else {
-    currentPages = [ d.image || 'https://via.placeholder.com/800x1200?text=No+pages' ];
-    currentPageIndex = 0;
-    updateReaderImage();
-  }
-  
-  const modal = document.getElementById('reader-modal'); 
-  if (modal) modal.style.display = 'flex';
-  
-  // Immediately go to full-screen mode
-  toggleFullScreen();
-}
-
-async function loadChapterPages(mangaId, chapterId){
-  const arr = await getChapterPages(mangaId, chapterId);
-  currentPages = (Array.isArray(arr) ? arr : []);
-  currentPageIndex = 0;
-
-  const pageSel = document.getElementById('page');
-  if (pageSel) {
-    pageSel.innerHTML = '';
-    currentPages.forEach((_, i) => {
-      const o = document.createElement('option');
-      o.value = String(i);
-      o.textContent = `Page ${i + 1}`;
-      pageSel.appendChild(o);
-    });
-  }
-
-  updateReaderImage();
-}
-
-function updateReaderImage(){
-  const img = document.getElementById('reader-image');
-  if (img) {
-    img.src = currentPages[currentPageIndex] || '';
-    img.alt = `${currentManga?.title || 'Manga'} - Page ${currentPageIndex + 1}`;
-  }
-  const pageSel = document.getElementById('page');
-  if (pageSel) pageSel.value = String(currentPageIndex || 0);
-}
-
-function changeChapter(){
-  const raw = document.getElementById('chapter')?.value;
-  if (!raw) return;
-  const c = JSON.parse(raw);
-  loadChapterPages(c.mangaId, c.chapterId);
-}
-
-function changePage(){
-  const idx = parseInt(document.getElementById('page')?.value || '0',10);
-  currentPageIndex = isNaN(idx) ? 0 : idx;
-  updateReaderImage();
-}
-
-function prevPage(){
-  if (!currentPages.length) return;
-  currentPageIndex = Math.max(0, currentPageIndex-1);
-  updateReaderImage();
-}
-
-function nextPage(){
-  if (!currentPages.length) return;
-  currentPageIndex = Math.min(currentPages.length-1, currentPageIndex+1);
-  updateReaderImage();
-}
-
-function closeReader(){
-  const modal = document.getElementById('reader-modal');
-  if (modal) modal.style.display='none';
-  // Exit full-screen mode
-  toggleFullScreen();
+function openReader(mangaId) {
+  // Redirect to reader page with manga ID
+  window.location.href = `reader.html?mangaId=${encodeURIComponent(mangaId)}`;
 }
 
 /* Search UI & helpers */
@@ -416,7 +304,7 @@ async function searchManga(){
       img.title = m.title || '';
       img.onclick = () => {
         closeSearchModal();
-        openReaderForFirstChapter(m.id);
+        openReader(m.id);
       };
       box.appendChild(img);
     });
@@ -503,19 +391,6 @@ async function loadMoreUpdates(){
   isLoadingUpdates = false;
 }
 
-/* Full-Screen Mode */
-function toggleFullScreen() {
-  const body = document.body;
-  body.classList.toggle('reader-fullscreen');
-  
-  // If entering full-screen, hide header/footer
-  if (body.classList.contains('reader-fullscreen')) {
-    document.getElementById('reader-modal').style.zIndex = '99999';
-  } else {
-    document.getElementById('reader-modal').style.zIndex = '90';
-  }
-}
-
 /* init */
 async function init(){
   try {
@@ -543,13 +418,7 @@ window.searchManga = searchManga;
 window.searchMangaDebounced = searchMangaDebounced;
 window.openSearchModal = openSearchModal;
 window.closeSearchModal = closeSearchModal;
-window.openReaderForFirstChapter = openReaderForFirstChapter;
-window.closeReader = closeReader;
-window.changeChapter = changeChapter;
-window.changePage = changePage;
-window.prevPage = prevPage;
-window.nextPage = nextPage;
+window.openReader = openReader;
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
-window.toggleFullScreen = toggleFullScreen;
