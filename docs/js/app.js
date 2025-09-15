@@ -357,21 +357,30 @@ function nextPage(){
 
 function openDedicatedReader() {
   const chapterSel = document.getElementById('chapter');
-  const pageSel = document.getElementById('page');
-  
   const chapterRaw = chapterSel?.value;
   if (!chapterRaw) return showStatus('No chapter selected', true);
-  
-  const { mangaId, chapterId } = JSON.parse(chapterRaw);
-  const pageIndex = parseInt(pageSel?.value || '0', 10) || 0;
 
-  const url = new URL('read.html', window.location.origin);
+  const { mangaId, chapterId } = JSON.parse(chapterRaw);
+  const pageIndex = 0; // start page
+
+  // Build repo-aware base path:
+  // - If the current pathname is like "/mnm-solutions/" or "/mnm-solutions/index.html",
+  //   the first non-empty segment will be "mnm-solutions" and we'll use "/mnm-solutions/" as base.
+  // - Otherwise we fall back to root "/".
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  let repoBase = '/';
+  if (pathParts.length > 0) {
+    repoBase = '/' + pathParts[0] + '/';
+  }
+
+  const url = new URL(repoBase + 'read.html', window.location.origin);
   url.searchParams.set('mangaId', mangaId);
   url.searchParams.set('chapterId', chapterId);
   url.searchParams.set('page', pageIndex);
 
   window.location.href = url.toString();
 }
+
 
 function closeReader(){
   const modal = document.getElementById('reader-modal');
@@ -529,4 +538,5 @@ window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
 window.openDedicatedReader = openDedicatedReader;
+
 
