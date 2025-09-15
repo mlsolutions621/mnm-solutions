@@ -2,7 +2,7 @@
    API root: https://gomanga-api.vercel.app/api
 */
 
-const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
+const API_BASE = (window.MR_BASE_OVERRIDE ? String(window.MR_BASE_OVERRIDE).trim() : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
@@ -20,7 +20,7 @@ function proxifyUrl(url) {
     if (path.startsWith('/api')) {
       path = path.substring(4);
     }
-    return `${API_BASE}${path}${u.search}`;
+    return `${API_BASE}${path}${u.search || ''}`;
   } catch(e) {
     return url;
   }
@@ -152,9 +152,16 @@ async function loadGenres() {
   try {
     const data = await apiGet('/genre');
     if (Array.isArray(data)) {
-      genreMap = Object.fromEntries(
-        data.map(g => [g.id, g.name])
-      );
+      // If API returns simple array of genre strings, convert accordingly:
+      // Some APIs return [{ id: '1', name: 'Action' }, ...] or just ['Action', ...].
+      if (data.length && typeof data[0] === 'string') {
+        // map name → name (no id available)
+        genreMap = Object.fromEntries(data.map(name => [name, name]));
+      } else {
+        genreMap = Object.fromEntries(
+          data.map(g => [g.id ?? g.name, g.name ?? g.id])
+        );
+      }
     }
   } catch (e) {
     console.warn('Failed to load genres', e);
@@ -165,15 +172,19 @@ async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
-    if (!data.id) throw new Error('Manga not found');
+    if (!data.id && !data.title) throw new Error('Manga not found');
 
-    // Map genre IDs to readable names
-    const genreNames = (data.genres || []).map(id => genreMap[id] || `Genre ${id}`).filter(Boolean);
+    // Map genre IDs to readable names (if genres are IDs)
+    const rawGenres = data.genres || [];
+    const genreNames = rawGenres.map(g => {
+      // g might be an id or a name
+      return genreMap[g] || g || null;
+    }).filter(Boolean);
 
     return {
-      id: data.id,
-      title: data.title,
-      image: proxifyUrl(data.imageUrl),
+      id: data.id || data.title,
+      title: data.title || data.id,
+      image: proxifyUrl(data.imageUrl || data.imgUrl || ''),
       author: data.author,
       status: data.status,
       lastUpdated: data.lastUpdated,
@@ -258,7 +269,7 @@ async function openReaderInfo(mangaId, fallback){
   const d = await getInfo(mangaId) || fallback || null;
   if (!d) return showStatus('Could not load manga info', true);
   currentManga = d;
-  document.getElementById('reader-cover').src = d.image || fallback?.image || '';
+  document.getElementById('reader-cover').src = d.image || (fallback && fallback.image) || '';
   document.getElementById('reader-title').textContent = d.title || '';
   document.getElementById('reader-description').textContent = d.genres && d.genres.length
     ? d.genres.join(' • ')
@@ -292,7 +303,7 @@ async function openReaderInfo(mangaId, fallback){
     const first = JSON.parse(chapterSel.value);
     await loadChapterPages(first.mangaId, first.chapterId);
   } else {
-    currentPages = [ proxifyUrl(d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages') ];
+    currentPages = [ proxifyUrl(d.image || (fallback && fallback.image) || 'https://via.placeholder.com/800x1200?text=No+pages') ];
     currentPageIndex = 0;
     updateReaderImage();
   }
@@ -313,9 +324,6 @@ async function loadChapterPages(mangaId, chapterId){
   updateReaderImage();
 
   // We no longer update page <select> — it’s hidden
-}
-
-  updateReaderImage();
 }
 
 function updateReaderImage(){
@@ -431,100 +439,4 @@ async function loadMoreTrending(){
   isLoadingTrending = true;
   window._browsePage = (window._browsePage||1) + 1;
   try {
-    const data = await apiGet(`/manga-list/${window._browsePage}`);
-    if (!data.data || !Array.isArray(data.data)) {
-      throw new Error('Invalid data format');
-    }
-    const more = data.data.map(m => ({
-      id: m.id,
-      title: m.title,
-      image: proxifyUrl(m.imgUrl),
-      latestChapter: m.latestChapter,
-      description: m.description
-    }));
-    trendingItems = trendingItems.concat(more);
-    renderTrending(trendingItems);
-    if (data.pagination && data.pagination.length > 0) {
-      const totalPages = data.pagination[data.pagination.length - 1];
-      if (window._browsePage >= totalPages) {
-        const loadMoreBtn = document.getElementById('load-more');
-        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-      }
-    }
-  } catch(e){
-    console.warn('loadMoreTrending failed', e);
-    showStatus('Failed to load more trending manga.', true);
-  }
-  isLoadingTrending = false;
-}
-
-async function loadMoreUpdates(){
-  if (isLoadingUpdates) return;
-  isLoadingUpdates = true;
-  window._updatesPage = (window._updatesPage||1) + 1;
-  try {
-    const data = await apiGet(`/manga-list/${window._updatesPage}`);
-    if (!data.data || !Array.isArray(data.data)) {
-      throw new Error('Invalid data format');
-    }
-    const more = data.data.map(m => ({
-      id: m.id,
-      title: m.title,
-      image: proxifyUrl(m.imgUrl),
-      latestChapter: m.latestChapter,
-      description: m.description
-    }));
-    featuredItems = featuredItems.concat(more);
-    renderUpdates(featuredItems);
-    if (data.pagination && data.pagination.length > 0) {
-      const totalPages = data.pagination[data.pagination.length - 1];
-      if (window._updatesPage >= totalPages) {
-        const loadMoreBtn = document.getElementById('load-more-updates');
-        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-      }
-    }
-  } catch(e){
-    console.warn('loadMoreUpdates failed', e);
-    showStatus('Failed to load more updates.', true);
-  }
-  isLoadingUpdates = false;
-}
-
-/* init */
-async function init(){
-  try {
-    await loadGenres(); // ← Load genres first
-    const [t,f] = await Promise.all([getTrending(), getFeatured()]);
-    trendingItems = Array.isArray(t) ? t : [];
-    featuredItems = Array.isArray(f) ? f : [];
-    renderTrending(trendingItems);
-    renderUpdates(featuredItems);
-    createObserver('sentinel-trending', loadMoreTrending);
-    createObserver('sentinel-updates', loadMoreUpdates);
-    showStatus('Ready — Enjoy reading!');
-  } catch(e){
-    console.error('init failed', e);
-    renderTrending([]);
-    renderUpdates([]);
-    showStatus('Initialization failed — check console', true, true);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', ()=>setTimeout(init, 120));
-
-/* expose functions used by inline HTML */
-window.searchManga = searchManga;
-window.searchMangaDebounced = searchMangaDebounced;
-window.openSearchModal = openSearchModal;
-window.closeSearchModal = closeSearchModal;
-window.openReaderInfo = openReaderInfo;
-window.closeReader = closeReader;
-window.changeChapter = changeChapter;
-window.changePage = changePage;
-window.prevPage = prevPage;
-window.nextPage = nextPage;
-window.loadMoreTrending = loadMoreTrending;
-window.loadMoreUpdates = loadMoreUpdates;
-window.loadMoreSearch = loadMoreSearch;
-window.openDedicatedReader = openDedicatedReader;
-
+    const dat
