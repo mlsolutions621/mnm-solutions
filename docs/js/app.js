@@ -207,14 +207,28 @@ function renderTrending(items){
   if (!list) { showStatus('Missing container #manga-list', true); return; }
   list.innerHTML = '';
   items.forEach(m=>{
+    // Create container for each item
+    const itemContainer = document.createElement('div');
+    itemContainer.className = 'trending-item';
+    
+    // Image
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = m.image || '';
     img.alt = m.title || '';
     img.title = m.title || '';
     img.style.cursor = 'pointer';
-    img.onclick = ()=> openReaderInfo(m.id, m);
-    list.appendChild(img);
+    img.onclick = ()=> openReaderForFirstChapter(m.id);
+    
+    // Read button
+    const readBtn = document.createElement('button');
+    readBtn.className = 'read-btn';
+    readBtn.textContent = 'Read';
+    readBtn.onclick = ()=> openReaderForFirstChapter(m.id);
+    
+    itemContainer.appendChild(img);
+    itemContainer.appendChild(readBtn);
+    list.appendChild(itemContainer);
   });
 }
 
@@ -228,33 +242,48 @@ function renderUpdates(items){
     img.loading = 'lazy';
     img.src = m.image || '';
     img.alt = m.title || '';
-    img.onclick = ()=> openReaderInfo(m.id, m);
+    img.onclick = ()=> openReaderForFirstChapter(m.id);
+    
     const meta = document.createElement('div'); meta.className='meta';
     const title = document.createElement('div'); title.className='title'; title.textContent = m.title || '';
     const chap = document.createElement('div'); chap.className='muted'; chap.style.fontSize='13px'; chap.textContent = m.latestChapter || '';
     meta.appendChild(title);
     meta.appendChild(chap);
-    card.appendChild(img); card.appendChild(meta); grid.appendChild(card);
+    
+    // Read button
+    const readBtn = document.createElement('button');
+    readBtn.className = 'read-btn';
+    readBtn.textContent = 'Read';
+    readBtn.onclick = ()=> openReaderForFirstChapter(m.id);
+    
+    card.appendChild(img);
+    card.appendChild(meta);
+    card.appendChild(readBtn);
+    grid.appendChild(card);
   });
 }
 
-async function openReaderInfo(mangaId, fallback){
-  const d = await getInfo(mangaId) || fallback || null;
+async function openReaderForFirstChapter(mangaId) {
+  const d = await getInfo(mangaId);
   if (!d) return showStatus('Could not load manga info', true);
+  
   currentManga = d;
-  document.getElementById('reader-cover').src = d.image || fallback?.image || '';
+  document.getElementById('reader-cover').src = d.image || '';
   document.getElementById('reader-title').textContent = d.title || '';
   document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
-
-  const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
-  const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
-
+  
+  const chapterSel = document.getElementById('chapter'); 
+  if (chapterSel) chapterSel.innerHTML = '';
+  
+  const pageSel = document.getElementById('page'); 
+  if (pageSel) pageSel.innerHTML = '';
+  
   const chaptersArr = Array.isArray(d.chapters) ? d.chapters.slice().reverse() : [];
-
+  
   if (chaptersArr.length === 0) {
     showStatus('No chapters available for this manga.', true);
   }
-
+  
   chaptersArr.forEach(ch=>{
     const opt = document.createElement('option');
     const label = ch.chapterId || 'Unknown';
@@ -265,18 +294,22 @@ async function openReaderInfo(mangaId, fallback){
     opt.textContent = `Ch. ${label}`;
     chapterSel.appendChild(opt);
   });
-
+  
   if (chaptersArr.length) {
     chapterSel.selectedIndex = 0;
     const first = JSON.parse(chapterSel.value);
     await loadChapterPages(first.mangaId, first.chapterId);
   } else {
-    currentPages = [ proxifyUrl(d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages') ];
+    currentPages = [ d.image || 'https://via.placeholder.com/800x1200?text=No+pages' ];
     currentPageIndex = 0;
     updateReaderImage();
   }
-
-  const modal = document.getElementById('reader-modal'); if (modal) modal.style.display = 'flex';
+  
+  const modal = document.getElementById('reader-modal'); 
+  if (modal) modal.style.display = 'flex';
+  
+  // Immediately go to full-screen mode
+  toggleFullScreen();
 }
 
 async function loadChapterPages(mangaId, chapterId){
@@ -336,6 +369,8 @@ function nextPage(){
 function closeReader(){
   const modal = document.getElementById('reader-modal');
   if (modal) modal.style.display='none';
+  // Exit full-screen mode
+  toggleFullScreen();
 }
 
 /* Search UI & helpers */
@@ -364,7 +399,7 @@ async function searchManga(){
       img.title = m.title || '';
       img.onclick = ()=> {
         closeSearchModal();
-        openReaderInfo(m.id, m);
+        openReaderForFirstChapter(m.id);
       };
       box.appendChild(img);
     });
@@ -451,6 +486,19 @@ async function loadMoreUpdates(){
   isLoadingUpdates = false;
 }
 
+/* Full-Screen Mode */
+function toggleFullScreen() {
+  const body = document.body;
+  body.classList.toggle('reader-fullscreen');
+  
+  // If entering full-screen, hide header/footer
+  if (body.classList.contains('reader-fullscreen')) {
+    document.getElementById('reader-modal').style.zIndex = '99999';
+  } else {
+    document.getElementById('reader-modal').style.zIndex = '90';
+  }
+}
+
 /* init */
 async function init(){
   try {
@@ -478,7 +526,7 @@ window.searchManga = searchManga;
 window.searchMangaDebounced = searchMangaDebounced;
 window.openSearchModal = openSearchModal;
 window.closeSearchModal = closeSearchModal;
-window.openReaderInfo = openReaderInfo;
+window.openReaderForFirstChapter = openReaderForFirstChapter;
 window.closeReader = closeReader;
 window.changeChapter = changeChapter;
 window.changePage = changePage;
@@ -487,3 +535,4 @@ window.nextPage = nextPage;
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
+window.toggleFullScreen = toggleFullScreen;
