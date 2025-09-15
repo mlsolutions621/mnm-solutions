@@ -264,8 +264,11 @@ async function openReaderInfo(mangaId, fallback){
     ? d.genres.join(' • ')
     : d.status || '';
 
-  const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
-  const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
+  const chapterSel = document.getElementById('chapter');
+  const pageSelContainer = document.querySelector('label[for="page"]')?.parentElement;
+
+  if (chapterSel) chapterSel.innerHTML = '';
+  if (pageSelContainer) pageSelContainer.style.display = 'none'; // 🚫 HIDE PAGE SELECTOR
 
   const chaptersArr = Array.isArray(d.chapters) ? d.chapters.slice().reverse() : [];
 
@@ -297,25 +300,20 @@ async function openReaderInfo(mangaId, fallback){
   const modal = document.getElementById('reader-modal');
   if (modal) {
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden'; // 🔒 Prevent background scroll
+    document.body.style.overflow = 'hidden';
   }
 }
 
 async function loadChapterPages(mangaId, chapterId){
   const arr = await getChapterPages(mangaId, chapterId);
   currentPages = (Array.isArray(arr) ? arr : []);
-  currentPageIndex = 0;
 
-  const pageSel = document.getElementById('page');
-  if (pageSel) {
-    pageSel.innerHTML = '';
-    currentPages.forEach((_, i) => {
-      const o = document.createElement('option');
-      o.value = String(i);
-      o.textContent = `Page ${i + 1}`;
-      pageSel.appendChild(o);
-    });
-  }
+  // Always show FIRST PAGE only in popup
+  currentPageIndex = 0;
+  updateReaderImage();
+
+  // We no longer update page <select> — it’s hidden
+}
 
   updateReaderImage();
 }
@@ -529,3 +527,4 @@ window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
 window.openDedicatedReader = openDedicatedReader;
+
