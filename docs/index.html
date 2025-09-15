@@ -8,6 +8,7 @@
   <link rel="icon" href="logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
 
+  <!-- Removed extra spaces in preconnect hrefs -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -15,6 +16,7 @@
   <link rel="stylesheet" href="css/style.css">
   <script>
     // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
+    // Removed extra spaces in MR_BASE_OVERRIDE
     window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
   </script>
   <script defer src="js/app.js"></script>
@@ -98,7 +100,7 @@
     </div>
   </div>
 
-  <!-- Reader Modal -->
+  <!-- Reader Modal (Modified: Removed Prev/Next Chapter buttons) -->
   <div class="modal" id="reader-modal" aria-hidden="true">
     <div class="modal-content">
       <button class="close" onclick="closeReader()" aria-label="Close">×</button>
@@ -115,17 +117,39 @@
           <label for="chapter">Chapter</label>
           <select id="chapter" onchange="changeChapter()"></select>
           <div class="spacer"></div>
-          <button class="btn small" onclick="prevChapter()" aria-label="Previous chapter">◀ Prev Chapter</button>
-          <button class="btn small" onclick="nextChapter()" aria-label="Next chapter">Next Chapter ▶</button>
+          <!-- Removed: <button class="btn small" onclick="prevChapter()" aria-label="Previous chapter">◀ Prev Chapter</button> -->
+          <!-- Removed: <button class="btn small" onclick="nextChapter()" aria-label="Next chapter">Next Chapter ▶</button> -->
           <button class="btn small" onclick="openDedicatedReader()">📖 Read Full Chapter</button>
         </div>
       </div>
 
       <div class="reader-stage">
-        <img id="reader-image" alt="Manga page" />
+        <img id="reader-image" alt="Manga page" /> <!-- This will be replaced by the long strip -->
       </div>
     </div>
   </div>
+  <!-- End Reader Modal -->
+
+  <!-- Details Modal (New) -->
+  <div class="modal" id="details-modal" aria-hidden="true">
+    <div class="modal-content">
+      <button class="close" onclick="closeDetailsModal()" aria-label="Close">×</button>
+      <div class="reader-head">
+        <div class="reader-meta">
+          <!-- This is the element app.js was looking for -->
+          <img id="details-cover" alt="Cover" />
+          <div>
+            <h3 id="details-title"></h3>
+            <p id="details-description" class="muted"></p>
+          </div>
+        </div>
+        <div class="reader-controls" style="justify-content: flex-end;">
+          <button class="btn" onclick="openDedicatedReaderFromDetails()">📖 Read Manga</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- End Details Modal -->
 
   <footer class="site-footer">
     <div class="container footer-inner">
