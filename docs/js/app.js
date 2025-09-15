@@ -1,5 +1,5 @@
 /* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
-   API root: https://gomanga-api.vercel.app/api
+   API root: https://gomanga-api.vercel.app/api  
 */
 
 const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
@@ -7,6 +7,20 @@ const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://g
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
+
+// Helper: rewrite absolute image URLs to go through worker proxy
+function proxifyUrl(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    // Build proxied URL: API_BASE already points to worker/proxy if override is set
+    const base = API_BASE; // e.g. https://your-worker-xyz.workers.dev/proxy
+    const upstreamPath = u.pathname + (u.search || '');
+    return base + upstreamPath;
+  } catch(e) {
+    return url; // fallback if URL invalid
+  }
+}
 
 function showStatus(msg, isError = false, persist = false){
   console[isError ? 'error' : 'log']('[MANGASTREAM]', msg);
@@ -71,12 +85,12 @@ async function apiGet(path, opts = {}){
 
 async function getTrending() {
   try {
-    const data = await apiGet('/manga-list/1'); // GET https://gomanga-api.vercel.app/api/manga-list/1
+    const data = await apiGet('/manga-list/1'); // GET https://gomanga-api.vercel.app/api/manga-list/1  
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl,
+      image: proxifyUrl(m.imgUrl), // PROXIFIED
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -89,12 +103,12 @@ async function getTrending() {
 
 async function getFeatured() {
   try {
-    const data = await apiGet('/manga-list/2'); // GET https://gomanga-api.vercel.app/api/manga-list/2
+    const data = await apiGet('/manga-list/2'); // GET https://gomanga-api.vercel.app/api/manga-list/2  
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl,
+      image: proxifyUrl(m.imgUrl), // PROXIFIED
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -114,7 +128,7 @@ async function searchTitles(q) {
     return data.manga.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl,
+      image: proxifyUrl(m.imgUrl), // PROXIFIED
       latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
       authors: m.authors,
       views: m.views
@@ -134,7 +148,7 @@ async function getInfo(mangaId) {
     return {
       id: data.id,
       title: data.title,
-      image: data.imageUrl,
+      image: proxifyUrl(data.imageUrl), // PROXIFIED
       author: data.author,
       status: data.status,
       lastUpdated: data.lastUpdated,
@@ -160,7 +174,8 @@ async function getChapterPages(mangaId, chapterId) {
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`); // GET https...
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
-    return data.imageUrls;
+    // PROXIFY ALL CHAPTER IMAGE URLs
+    return data.imageUrls.map(proxifyUrl);
   } catch (e) {
     console.warn('getChapterPages error', e);
     showStatus('Failed to load chapter pages.', true);
@@ -210,7 +225,7 @@ async function openReaderInfo(mangaId, fallback){
   const d = await getInfo(mangaId) || fallback || null;
   if (!d) return showStatus('Could not load manga info', true);
   currentManga = d;
-  document.getElementById('reader-cover').src = d.image || fallback?.image || '';
+  document.getElementById('reader-cover').src = proxifyUrl(d.image || fallback?.image || ''); // PROXIFIED
   document.getElementById('reader-title').textContent = d.title || '';
   document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
 
@@ -239,7 +254,7 @@ async function openReaderInfo(mangaId, fallback){
     const first = JSON.parse(chapterSel.value);
     await loadChapterPages(first.mangaId, first.chapterId);
   } else {
-    currentPages = [ d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages' ];
+    currentPages = [ proxifyUrl(d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages') ]; // PROXIFIED
     currentPageIndex = 0;
     updateReaderImage();
   }
@@ -367,7 +382,7 @@ async function loadMoreTrending(){
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl,
+      image: proxifyUrl(m.imgUrl), // PROXIFIED
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -399,7 +414,7 @@ async function loadMoreUpdates(){
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl,
+      image: proxifyUrl(m.imgUrl), // PROXIFIED
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -455,4 +470,3 @@ window.nextPage = nextPage;
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
-
