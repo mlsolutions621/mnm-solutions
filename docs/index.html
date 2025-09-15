@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Manga Stream</title>
+  <title>Manga&Manhwa-Solutions</title>
 
   <link rel="icon" href="logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
@@ -14,6 +14,7 @@
 
   <link rel="stylesheet" href="css/style.css">
   <script>
+    // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
     window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
   </script>
   <script defer src="js/app.js"></script>
@@ -49,7 +50,7 @@
       <div class="container section-header">
         <h2>Trending Manga</h2>
       </div>
-      <div class="container grid trending-grid" id="manga-list" aria-live="polite"></div>
+      <div class="container scroller" id="manga-list" aria-live="polite"></div>
       <div class="container load-more-row">
         <button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button>
       </div>
@@ -62,7 +63,7 @@
         <h2>Latest Updates</h2>
         <p class="muted">Recently updated chapters</p>
       </div>
-      <div class="container grid updates-grid" id="updates-list" aria-live="polite"></div>
+      <div class="container grid" id="updates-list" aria-live="polite"></div>
       <div class="container load-more-row">
         <button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button>
       </div>
@@ -82,14 +83,45 @@
     </div>
   </div>
 
+  <!-- Reader Modal -->
+  <div class="modal" id="reader-modal" aria-hidden="true">
+    <div class="modal-content">
+      <button class="close" onclick="closeReader()" aria-label="Close">×</button>
+
+      <div class="reader-head">
+        <div class="reader-meta">
+          <img id="reader-cover" alt="Cover" />
+          <div>
+            <h3 id="reader-title"></h3>
+            <p id="reader-description" class="muted"></p>
+          </div>
+        </div>
+        <div class="reader-controls">
+          <label for="chapter">Chapter</label>
+          <select id="chapter" onchange="changeChapter()"></select>
+          <label for="page">Page</label>
+          <select id="page" onchange="changePage()"></select>
+          <div class="spacer"></div>
+          <button class="btn small" onclick="prevPage()" aria-label="Previous page">◀</button>
+          <button class="btn small" onclick="nextPage()" aria-label="Next page">▶</button>
+        </div>
+      </div>
+
+      <div class="reader-stage">
+        <img id="reader-image" alt="Manga page" />
+      </div>
+    </div>
+  </div>
+
   <footer class="site-footer">
     <div class="container footer-inner">
-      <p>© 2025 MangaStream. All rights reserved.</p>
+      <p>© 2025 M&M-Solutions. All rights reserved.</p>
       <div class="links">
         <a href="/disclaimer.html">Disclaimer</a>
         <a href="/about.html">About</a>
       </div>
     </div>
   </footer>
+
 </body>
 </html>
