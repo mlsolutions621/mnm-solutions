@@ -1,11 +1,9 @@
-// js/read.js - Dedicated Manga Reader
+// js/read.js - Dedicated Manga Reader (Long Strip/Webtoon Style)
 // Uses the same proxy logic as app.js
 
 const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
 
-let currentPages = [];
-let currentPageIndex = 0;
-let zoomLevel = 1;
+let currentPages = []; // This will now hold URLs for ALL images in the chapter
 let isFullscreen = false;
 
 // Helper: rewrite image URLs to go through worker proxy correctly
@@ -81,51 +79,72 @@ async function getChapterPages(mangaId, chapterId) {
   }
 }
 
-// Update the image displayed in the reader
-function updateReaderImage() {
-  const img = document.getElementById('reader-image');
-  if (!img) {
-    console.warn('[read.js] Reader image element not found');
+// --- NEW FUNCTION: Render all images in a long strip ---
+function renderLongStrip(imageUrls) {
+  const container = document.getElementById('reader-content');
+  if (!container) {
+    console.error('[read.js] Reader content container not found');
     return;
   }
-  const src = currentPages[currentPageIndex] || '';
-  console.log('[read.js] Updating image to:', src);
-  img.src = src;
-  img.alt = `Manga Page ${currentPageIndex + 1}`;
-  // Apply zoom
-  img.style.transform = `scale(${zoomLevel})`;
-  img.style.transformOrigin = 'top center';
+
+  // Clear previous content
+  container.innerHTML = '';
+
+  // Create a wrapper div for all images
+  const stripWrapper = document.createElement('div');
+  stripWrapper.id = 'manga-strip';
+  stripWrapper.style.display = 'flex';
+  stripWrapper.style.flexDirection = 'column';
+  stripWrapper.style.alignItems = 'center';
+  stripWrapper.style.gap = '10px'; // Space between images
+
+  imageUrls.forEach((url, index) => {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `Page ${index + 1}`;
+    img.style.width = '100%';
+    img.style.maxWidth = '1000px'; // Optional: Cap the width
+    img.style.height = 'auto';
+    img.style.borderRadius = '8px';
+    img.style.display = 'block';
+    img.loading = 'lazy'; // Lazy load for performance
+    stripWrapper.appendChild(img);
+  });
+
+  container.appendChild(stripWrapper);
+  console.log(`[read.js] Rendered ${imageUrls.length} images in long strip.`);
 }
 
-// Navigation
-function prevPage() {
-  if (currentPages.length === 0) return;
-  currentPageIndex = Math.max(0, currentPageIndex - 1);
-  console.log('[read.js] Navigating to previous page:', currentPageIndex);
-  updateReaderImage();
+// --- NEW FUNCTION: Zoom for Long Strip ---
+function setStripZoom(level) {
+    const strip = document.getElementById('manga-strip');
+    if (strip) {
+        strip.style.transform = `scale(${level})`;
+        strip.style.transformOrigin = 'top center';
+        // Adjust container overflow if needed
+        const container = document.getElementById('reader-content');
+        if (container) {
+            container.style.overflowX = level > 1 ? 'auto' : 'hidden';
+        }
+    }
 }
 
-function nextPage() {
-  if (currentPages.length === 0) return;
-  currentPageIndex = Math.min(currentPages.length - 1, currentPageIndex + 1);
-  console.log('[read.js] Navigating to next page:', currentPageIndex);
-  updateReaderImage();
-}
+// --- NEW VARIABLES for Strip Zoom ---
+let stripZoomLevel = 1;
 
-// Zoom
 function zoomIn() {
-  zoomLevel = Math.min(zoomLevel + 0.25, 3);
-  console.log('[read.js] Zooming in. New level:', zoomLevel);
-  updateReaderImage();
+    stripZoomLevel = Math.min(stripZoomLevel + 0.25, 3);
+    console.log('[read.js] Zooming strip in. New level:', stripZoomLevel);
+    setStripZoom(stripZoomLevel);
 }
 
 function zoomOut() {
-  zoomLevel = Math.max(zoomLevel - 0.25, 0.5);
-  console.log('[read.js] Zooming out. New level:', zoomLevel);
-  updateReaderImage();
+    stripZoomLevel = Math.max(stripZoomLevel - 0.25, 0.5);
+    console.log('[read.js] Zooming strip out. New level:', stripZoomLevel);
+    setStripZoom(stripZoomLevel);
 }
 
-// Fullscreen
+// Fullscreen (logic remains the same)
 function toggleFullscreen() {
   const container = document.getElementById('reader-container');
   if (!container) {
@@ -147,23 +166,19 @@ function toggleFullscreen() {
 
 // Initialize reader
 async function initReader() {
-  console.log('[read.js] Initializing reader...');
+  console.log('[read.js] Initializing reader (Long Strip Mode)...');
   const params = new URLSearchParams(window.location.search);
   const mangaId = params.get('mangaId');
   const chapterId = params.get('chapterId');
-  const pageParam = params.get('page');
 
   if (!mangaId || !chapterId) {
     const msg = 'Invalid reader parameters. Missing mangaId or chapterId.';
     console.error('[read.js]', msg);
     alert(msg);
-    // Don't go back immediately, let user see the error
-    // window.history.back();
     return;
   }
 
-  currentPageIndex = parseInt(pageParam || '0', 10) || 0;
-  console.log('[read.js] Parameters - Manga:', mangaId, 'Chapter:', chapterId, 'Page:', currentPageIndex);
+  console.log('[read.js] Parameters - Manga:', mangaId, 'Chapter:', chapterId);
 
   try {
     currentPages = await getChapterPages(mangaId, chapterId);
@@ -174,7 +189,8 @@ async function initReader() {
       return;
     }
     console.log(`[read.js] Loaded ${currentPages.length} pages.`);
-    updateReaderImage();
+    // Instead of loading one image, render all in a strip
+    renderLongStrip(currentPages);
   } catch (e) {
     console.error('[read.js] Failed to initialize reader', e);
     alert('Failed to load chapter. Please try again. Check console for details.');
@@ -188,8 +204,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Expose functions for inline onclick attributes
-window.prevPage = prevPage;
-window.nextPage = nextPage;
+// Note: prevPage and nextPage are no longer relevant in this mode
+// window.prevPage = prevPage; // Removed
+// window.nextPage = nextPage; // Removed
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.toggleFullscreen = toggleFullscreen;
