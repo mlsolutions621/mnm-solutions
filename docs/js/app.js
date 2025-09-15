@@ -1,11 +1,11 @@
 /* js/app.js - MangaStream Frontend (Connected to GOMANGA-API)
-   Backend:  https://gomanga-api.vercel.app
+   Backend base: https://gomanga-api.vercel.app
 */
 
 const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://gomanga-api.vercel.app').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
-let trendingItems = [], featuredItems = [], searchNext = null;
+let trendingItems = [], featuredItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
 
 function showStatus(msg, isError = false, persist = false){
@@ -61,19 +61,16 @@ async function apiGet(path, opts = {}){
   }
 }
 
-/* ---- FETCHERS (CONNECTED TO GOMANGA-API) ---- */
+/* ---- FETCHERS (GOMANGA-API) ---- */
 
-// ✅ CONNECTED TO GOMANGA-API
 async function getTrending() {
   try {
-    // Fetch the first page of manga list for trending
     const data = await apiGet(`/api/manga-list/1`);
     if (!data.data || !Array.isArray(data.data)) return [];
-
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: m.imgUrl, // Use imgUrl for the cover image
+      image: m.imgUrl,
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -84,13 +81,10 @@ async function getTrending() {
   }
 }
 
-// ✅ CONNECTED TO GOMANGA-API
 async function getFeatured() {
   try {
-    // Fetch the second page of manga list for featured
     const data = await apiGet(`/api/manga-list/2`);
     if (!data.data || !Array.isArray(data.data)) return [];
-
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
@@ -105,19 +99,17 @@ async function getFeatured() {
   }
 }
 
-// ✅ CONNECTED TO GOMANGA-API
-async function searchTitles(q, page = 1) {
+async function searchTitles(q) {
   if (!q) return [];
   try {
-    // Encode the search query, replacing spaces with underscores as in the example
+    // API examples use underscores in keyword; transform spaces -> underscores
     const searchQuery = encodeURIComponent(q.replace(/\s+/g, '_'));
     const data = await apiGet(`/api/search/${searchQuery}`);
     if (!data.manga || !Array.isArray(data.manga)) return [];
-
     return data.manga.map(m => ({
-      id: m.id, // Use the manga ID
+      id: m.id,
       title: m.title,
-      image: m.imgUrl, // Use imgUrl for the cover image
+      image: m.imgUrl,
       latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
       authors: m.authors,
       views: m.views
@@ -129,26 +121,23 @@ async function searchTitles(q, page = 1) {
   }
 }
 
-// ✅ CONNECTED TO GOMANGA-API
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
     const data = await apiGet(`/api/manga/${encodeURIComponent(mangaId)}`);
     if (!data.id) throw new Error('Manga not found');
-
     return {
       id: data.id,
       title: data.title,
-      image: data.imageUrl, // Use imageUrl for details
+      image: data.imageUrl,
       author: data.author,
       status: data.status,
       lastUpdated: data.lastUpdated,
       views: data.views,
       genres: data.genres,
       rating: data.rating,
-      // Map chapters for our use
       chapters: data.chapters && Array.isArray(data.chapters) ? data.chapters.map(ch => ({
-        chapterId: ch.chapterId, // e.g., "1", "2"
+        chapterId: ch.chapterId,
         views: ch.views,
         uploaded: ch.uploaded,
         timestamp: ch.timestamp
@@ -161,14 +150,11 @@ async function getInfo(mangaId) {
   }
 }
 
-// ✅ CONNECTED TO GOMANGA-API
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) return [];
   try {
     const data = await apiGet(`/api/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
-
-    // The imageUrls array contains the direct image URLs
     return data.imageUrls;
   } catch (e) {
     console.warn('getChapterPages error', e);
@@ -185,10 +171,12 @@ function renderTrending(items){
   list.innerHTML = '';
   items.forEach(m=>{
     const img = document.createElement('img');
-    img.src = m.image || m.cover || m.img || '';
-    img.alt = m.title || m.name || '';
+    img.loading = 'lazy';
+    img.src = m.image || '';
+    img.alt = m.title || '';
+    img.title = m.title || '';
     img.style.cursor = 'pointer';
-    img.onclick = ()=> openReaderInfo(m.id || m.slug || m.url, m); // Pass ID
+    img.onclick = ()=> openReaderInfo(m.id, m);
     list.appendChild(img);
   });
 }
@@ -200,12 +188,15 @@ function renderUpdates(items){
   items.forEach(m=>{
     const card = document.createElement('div'); card.className = 'card';
     const img = document.createElement('img');
-    img.src = m.image || m.cover || m.img || '';
-    img.alt = m.title || m.name || '';
-    img.onclick = ()=> openReaderInfo(m.id || m.slug || m.url, m); // Pass ID
+    img.loading = 'lazy';
+    img.src = m.image || '';
+    img.alt = m.title || '';
+    img.onclick = ()=> openReaderInfo(m.id, m);
     const meta = document.createElement('div'); meta.className='meta';
-    const title = document.createElement('div'); title.className='title'; title.textContent = m.title || m.name || '';
+    const title = document.createElement('div'); title.className='title'; title.textContent = m.title || '';
+    const chap = document.createElement('div'); chap.className='muted'; chap.style.fontSize='13px'; chap.textContent = m.latestChapter || '';
     meta.appendChild(title);
+    meta.appendChild(chap);
     card.appendChild(img); card.appendChild(meta); grid.appendChild(card);
   });
 }
@@ -214,14 +205,16 @@ async function openReaderInfo(mangaId, fallback){
   const d = await getInfo(mangaId) || fallback || null;
   if (!d) return showStatus('Could not load manga info', true);
   currentManga = d;
-  document.getElementById('reader-cover').src = d.image || d.imageUrl || fallback?.image || '';
-  document.getElementById('reader-title').textContent = d.title || d.name || '';
-  document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || d.description || '';
+  document.getElementById('reader-cover').src = d.image || fallback?.image || '';
+  document.getElementById('reader-title').textContent = d.title || '';
+  document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
 
   const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
   const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
 
-  const chaptersArr = Array.isArray(d.chapters) ? d.chapters : [];
+  // Show newest chapters first (reverse)
+  const chaptersArr = Array.isArray(d.chapters) ? d.chapters.slice().reverse() : [];
+
   if (chaptersArr.length === 0) {
     showStatus('No chapters available for this manga.', true);
   }
@@ -238,9 +231,10 @@ async function openReaderInfo(mangaId, fallback){
   });
 
   if (chaptersArr.length) {
-    chapterSel.value = chapterSel.options[0].value;
+    // select first (newest)
+    chapterSel.selectedIndex = 0;
     const first = JSON.parse(chapterSel.value);
-    await loadChapterPagesNode(first.mangaId, first.chapterId);
+    await loadChapterPages(first.mangaId, first.chapterId);
   } else {
     currentPages = [ d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages' ];
     currentPageIndex = 0;
@@ -250,7 +244,7 @@ async function openReaderInfo(mangaId, fallback){
   const modal = document.getElementById('reader-modal'); if (modal) modal.style.display = 'flex';
 }
 
-async function loadChapterPagesNode(mangaId, chapterId){
+async function loadChapterPages(mangaId, chapterId){
   const arr = await getChapterPages(mangaId, chapterId);
   currentPages = (Array.isArray(arr) ? arr : []);
   currentPageIndex = 0;
@@ -271,7 +265,10 @@ async function loadChapterPagesNode(mangaId, chapterId){
 
 function updateReaderImage(){
   const img = document.getElementById('reader-image');
-  if (img) img.src = currentPages[currentPageIndex] || '';
+  if (img) {
+    img.src = currentPages[currentPageIndex] || '';
+    img.alt = `${currentManga?.title || 'Manga'} - Page ${currentPageIndex + 1}`;
+  }
   const pageSel = document.getElementById('page');
   if (pageSel) pageSel.value = String(currentPageIndex || 0);
 }
@@ -280,7 +277,7 @@ function changeChapter(){
   const raw = document.getElementById('chapter')?.value;
   if (!raw) return;
   const c = JSON.parse(raw);
-  loadChapterPagesNode(c.mangaId, c.chapterId);
+  loadChapterPages(c.mangaId, c.chapterId);
 }
 
 function changePage(){
@@ -306,38 +303,52 @@ function closeReader(){
   if (modal) modal.style.display='none';
 }
 
-/* Search UI */
+/* Search UI & helpers */
+function debounce(fn, wait) {
+  let t;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(()=>fn.apply(this,args), wait);
+  };
+}
+
 async function searchManga(){
   const q = document.getElementById('search-input')?.value?.trim();
   const box = document.getElementById('search-results');
   if (!q) { if (box) box.innerHTML = ''; return; }
   try {
-    const items = await searchTitles(q, 1);
+    isLoadingSearch = true;
+    const items = await searchTitles(q);
     if (!box) return;
     box.innerHTML = '';
     (items || []).forEach(m=>{
       const img = document.createElement('img');
-      img.src = m.image || m.cover || m.img || '';
-      img.alt = m.title || m.name || '';
+      img.loading = 'lazy';
+      img.src = m.image || '';
+      img.alt = m.title || '';
+      img.title = m.title || '';
       img.onclick = ()=> {
         closeSearchModal();
-        openReaderInfo(m.id, m); // Pass ID and item as fallback
+        openReaderInfo(m.id, m);
       };
       box.appendChild(img);
     });
-    // Simplified: GOMANGA-API search doesn't seem to return a 'next' page link in the example
-    // We'll hide the load more button for search results for now
+    // Hide load-more for search (API example doesn't show pagination)
     const loadMoreBtn = document.getElementById('search-load-more');
     if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-  } catch(e){ console.warn('searchManga failed', e); }
+  } catch(e){ console.warn('searchManga failed', e); showStatus('Search error', true); }
+  finally { isLoadingSearch = false; }
 }
 
-// Simplified loadMoreSearch since API example doesn't show pagination for search
-async function loadMoreSearch(){
+const searchMangaDebounced = debounce(searchManga, 420);
+
+/* load more for search (not available in example) */
+function loadMoreSearch(){
   showStatus('Load more not available for search.', true);
 }
 
-function openSearchModal(){ const m=document.getElementById('search-modal'); if(m){m.style.display='flex'; setTimeout(()=>document.getElementById('search-input')?.focus(),50);} }
+/* modal helpers */
+function openSearchModal(){ const m=document.getElementById('search-modal'); if(m){m.style.display='flex'; setTimeout(()=>document.getElementById('search-input')?.focus(),100);} }
 function closeSearchModal(){ const m=document.getElementById('search-modal'); if(m){m.style.display='none'; document.getElementById('search-results').innerHTML='';} }
 
 /* observers and loading more trending/updates */
@@ -357,7 +368,6 @@ async function loadMoreTrending(){
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error('Invalid data format');
     }
-
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
@@ -365,15 +375,11 @@ async function loadMoreTrending(){
       latestChapter: m.latestChapter,
       description: m.description
     }));
-
     trendingItems = trendingItems.concat(more);
     renderTrending(trendingItems);
-
-    // Check if we've reached the last page (assuming last item in pagination is total pages)
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
       if (window._browsePage >= totalPages) {
-        // Hide load more button
         const loadMoreBtn = document.getElementById('load-more');
         if (loadMoreBtn) loadMoreBtn.style.display = 'none';
       }
@@ -394,7 +400,6 @@ async function loadMoreUpdates(){
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error('Invalid data format');
     }
-
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
@@ -402,11 +407,8 @@ async function loadMoreUpdates(){
       latestChapter: m.latestChapter,
       description: m.description
     }));
-
     featuredItems = featuredItems.concat(more);
     renderUpdates(featuredItems);
-
-    // Check if we've reached the last page
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
       if (window._updatesPage >= totalPages) {
@@ -419,11 +421,6 @@ async function loadMoreUpdates(){
     showStatus('Failed to load more updates.', true);
   }
   isLoadingUpdates = false;
-}
-
-/* PDF Download Function - Disabled for GOMANGA-API */
-function downloadCurrentChapter() {
-  showStatus('PDF download is not supported with this API.', true);
 }
 
 /* init */
@@ -450,6 +447,7 @@ document.addEventListener('DOMContentLoaded', ()=>setTimeout(init, 120));
 
 /* expose functions used by inline HTML */
 window.searchManga = searchManga;
+window.searchMangaDebounced = searchMangaDebounced;
 window.openSearchModal = openSearchModal;
 window.closeSearchModal = closeSearchModal;
 window.openReaderInfo = openReaderInfo;
@@ -458,4 +456,6 @@ window.changeChapter = changeChapter;
 window.changePage = changePage;
 window.prevPage = prevPage;
 window.nextPage = nextPage;
-window.downloadCurrentChapter = downloadCurrentChapter; // Expose PDF function (disabled)
+window.loadMoreTrending = loadMoreTrending;
+window.loadMoreUpdates = loadMoreUpdates;
+window.loadMoreSearch = loadMoreSearch;
