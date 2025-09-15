@@ -49,13 +49,13 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 0}
 .scroller::-webkit-scrollbar{height:10px}
 .scroller::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:999px}
-.scroller img{width:160px;border-radius:12px;box-shadow:var(--shadow);cursor:pointer;transition:transform .18s}
+.scroller img{width:160px;border-radius:12px;box-shadow:var(--shadow);cursor:pointer;transition:transform .18s;object-fit:cover;height:240px}
 .scroller img:hover{transform:translateY(-6px) scale(1.02)}
 
 /* Grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.04);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
-.card img{width:100%;display:block}
+.card img{width:100%;display:block;object-fit:cover;height:220px}
 .card .meta{padding:10px}
 .card .title{font-weight:700;font-size:.98rem}
 
@@ -65,7 +65,7 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .search-box{width:min(900px,96%);margin:0 auto}
 .search-box input{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff}
 .search-box .results{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
-.search-box img{width:100%;border-radius:10px;cursor:pointer}
+.search-box img{width:100%;border-radius:10px;cursor:pointer;object-fit:cover;height:220px}
 
 /* Modal / Reader */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;padding:16px;z-index:90}
@@ -86,9 +86,10 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .footer-inner .links{display:flex;gap:12px}
 .footer-inner a{color:var(--muted);text-decoration:none}
 
+/* Responsive tweaks */
 @media (max-width: 760px){
   .reader-head{flex-direction:column;align-items:stretch}
   .reader-controls{justify-content:flex-start;flex-wrap:wrap}
+  .scroller img, .search-box img{height:180px}
+  .card img{height:160px}
 }
-
-
