@@ -529,3 +529,4 @@ window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
 window.openDedicatedReader = openDedicatedReader;
+
