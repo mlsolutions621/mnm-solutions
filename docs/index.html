@@ -8,7 +8,6 @@
   <link rel="icon" href="/logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
 
-  <!-- Corrected href: Removed trailing spaces -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -22,8 +21,8 @@
     <div class="container nav">
       <a class="brand" href="#">Manga<span>Stream</span></a>
       <nav class="menu">
-        <a href="#trending">Trending</a>
-        <a href="#updates">Updates</a>
+        <a href="#trending-section">Trending</a>
+        <a href="#updates-section">Updates</a>
         <button class="search-button" onclick="openSearchModal()">Search</button>
       </nav>
     </div>
@@ -34,7 +33,6 @@
       <h1>Read Manga Instantly</h1>
       <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
       <div class="hero-actions">
-        <!-- Updated to scroll to the section with id 'trending-section' -->
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
       </div>
@@ -44,31 +42,27 @@
 
   <main>
     <!-- Trending Section -->
-    <!-- Added id 'trending-section' for smooth scroll -->
     <section class="section" id="trending-section">
       <div class="container section-header">
         <h2>Trending Manga</h2>
       </div>
-      <div class="container scroller" id="manga-list"></div>
+      <div class="container scroller" id="manga-list" aria-live="polite"></div>
       <div class="container load-more-row">
         <button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button>
       </div>
-      <!-- Added sentinel div for infinite scroll -->
       <div id="sentinel-trending" style="height: 1px;"></div>
     </section>
 
     <!-- Updates Section -->
-    <!-- Added id 'updates-section' for consistency (though not linked directly) -->
     <section class="section" id="updates-section">
       <div class="container section-header">
         <h2>Latest Updates</h2>
         <p class="muted">Recently updated chapters</p>
       </div>
-      <div class="container grid" id="updates-list"></div>
+      <div class="container grid" id="updates-list" aria-live="polite"></div>
       <div class="container load-more-row">
         <button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button>
       </div>
-      <!-- Added sentinel div for infinite scroll -->
       <div id="sentinel-updates" style="height: 1px;"></div>
     </section>
   </main>
@@ -77,7 +71,7 @@
   <div class="search-modal" id="search-modal" aria-hidden="true">
     <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
     <div class="search-box">
-      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchManga()" />
+      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" />
       <div class="results" id="search-results"></div>
       <div class="load-more-row">
         <button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button>
