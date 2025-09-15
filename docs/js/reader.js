@@ -1,4 +1,4 @@
-/* js/reader.js - Manga Reader Page */
+/* js/reader.js - Dedicated Manga Reader */
 const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
@@ -115,6 +115,7 @@ function renderPages() {
     img.style.width = '100%';
     img.style.maxHeight = '90vh';
     img.style.objectFit = 'contain';
+    img.style.display = 'block';
     
     pageDiv.appendChild(img);
     pagesContainer.appendChild(pageDiv);
@@ -159,6 +160,12 @@ function goBackToHome() {
   window.location.href = '/';
 }
 
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') prevPage();
+  if (e.key === 'ArrowRight') nextPage();
+});
+
 // Initialize reader
 async function initReader() {
   const params = getUrlParams();
@@ -175,12 +182,6 @@ async function initReader() {
     console.error('Reader initialization failed', e);
   }
 }
-
-// Keyboard navigation
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowLeft') prevPage();
-  if (e.key === 'ArrowRight') nextPage();
-});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', initReader);
