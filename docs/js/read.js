@@ -237,14 +237,16 @@ function toggleFullscreen() {
 }
 
 // --- Chapter Navigation using Selector ---
+// --- Chapter Navigation using Selector (CORRECTED) ---
 function prevChapter() {
   const selector = document.getElementById('chapter-selector');
   if (!selector || selector.disabled) return;
 
   const currentSelectedIndex = selector.selectedIndex;
-  // List is reversed in the selector, so Prev Chapter is the *next* option
-  if (currentSelectedIndex < selector.options.length - 1) {
-    selector.selectedIndex = currentSelectedIndex + 1;
+  // To go to the PREVIOUS chapter (e.g., from Ch. 3 to Ch. 2):
+  // In a REVERSED list, the PREVIOUS chapter is the ONE WITH A HIGHER INDEX.
+  if (currentSelectedIndex > 0) { // Check if we are NOT at the last item in the reversed list
+    selector.selectedIndex = currentSelectedIndex - 1; // Move to higher index
     onChapterSelect();
   } else {
     alert("This is the first chapter.");
@@ -256,14 +258,16 @@ function nextChapter() {
   if (!selector || selector.disabled) return;
 
   const currentSelectedIndex = selector.selectedIndex;
-  // List is reversed in the selector, so Next Chapter is the *previous* option
-  if (currentSelectedIndex > 0) {
-    selector.selectedIndex = currentSelectedIndex - 1;
+  // To go to the NEXT chapter (e.g., from Ch. 3 to Ch. 4):
+  // In a REVERSED list, the NEXT chapter is the ONE WITH A LOWER INDEX.
+  if (currentSelectedIndex < selector.options.length - 1) { // Check if we are NOT at the first item in the reversed list
+    selector.selectedIndex = currentSelectedIndex + 1; // Move to lower index
     onChapterSelect();
   } else {
     alert("This is the last chapter.");
   }
 }
+// --- End of corrected navigation functions ---
 
 // Handler for when user selects a chapter from the dropdown
 async function onChapterSelect() {
