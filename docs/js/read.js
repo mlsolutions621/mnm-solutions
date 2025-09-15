@@ -1,13 +1,18 @@
-// js/read.js - Dedicated Manga Reader (Long Strip/Webtoon Style)
+// js/read.js - Dedicated Manga Reader (Long Strip/Webtoon Style with Chapter Selector)
 // Uses the same proxy logic as app.js
 
-const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
+const API_BASE = (window.MR_BASE_OVERRIDE 
+    ? window.MR_BASE_OVERRIDE 
+    : 'https://gomanga-api.vercel.app/api'
+).replace(/\/+$/, '');
 
-let currentPages = []; // This will now hold URLs for ALL images in the chapter
+let currentMangaId = null;
+let currentChapterId = null;
+let mangaChapters = []; // Store the list of chapters for this manga
+let currentPages = []; // This will hold URLs for ALL images in the current chapter
 let isFullscreen = false;
 
-// Helper: rewrite image URLs to go through worker proxy correctly
-// This MUST match the proxifyUrl function in app.js
+// --- Helper: rewrite image URLs to go through worker proxy correctly ---
 function proxifyUrl(url) {
   if (!url) return url;
   try {
@@ -16,15 +21,15 @@ function proxifyUrl(url) {
     if (path.startsWith('/api')) {
       path = path.substring(4);
     }
-    // Keep search parameters
     const fullPath = path + (u.search || '');
     return `${API_BASE}${fullPath}`;
   } catch(e) {
-    return url;
+    console.warn('[read.js] Failed to proxify URL:', url, e);
+    return url; // Return original if parsing fails
   }
 }
 
-// Generic API fetcher, using the proxy
+// --- Generic API fetcher, using the proxy ---
 async function apiGet(path, opts = {}){
   const normalizedPath = path.startsWith('/') ? path : '/' + path;
   const url = `${API_BASE}${normalizedPath}`;
@@ -48,47 +53,70 @@ async function apiGet(path, opts = {}){
       console.error('[read.js] JSON Error:', msg);
       throw new Error(msg);
     });
-    console.log('[read.js] API Response:', url, json);
+    console.log('[read.js] API Response:', url /*, json*/); // Log URL, optionally log data
     return json;
   } catch (err) {
     console.error('[read.js] apiGet failed', err);
-    alert('Failed to load content. Check console for details.');
+    // Don't show alert here, let calling function handle it
     throw err;
   }
 }
 
-// Fetch chapter page URLs
+// --- Fetch chapter page URLs ---
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) {
-    console.warn('[read.js] Missing mangaId or chapterId');
+    console.warn('[read.js] getChapterPages: Missing mangaId or chapterId');
     return [];
   }
   try {
-    // This call goes through the proxy
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) {
       console.warn('[read.js] Invalid API response for chapter pages', data);
       return [];
     }
-    // Proxify the image URLs before returning
     return data.imageUrls.map(url => proxifyUrl(url));
   } catch (e) {
     console.warn('[read.js] getChapterPages error', e);
-    alert('Failed to load chapter pages. Check console for details.');
+    // Don't show alert here, let calling function handle it
     return [];
   }
 }
 
-// --- NEW FUNCTION: Render all images in a long strip ---
+// --- Fetch manga details (for chapters list) ---
+async function getMangaDetails(mangaId) {
+    if (!mangaId) {
+        console.warn('[read.js] getMangaDetails: Missing mangaId');
+        return null;
+    }
+    try {
+        const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
+        if (!data.id) {
+             console.warn('[read.js] Manga not found or invalid API response', data);
+             return null;
+        }
+        return data;
+    } catch (e) {
+        console.warn('[read.js] getMangaDetails error', e);
+        return null;
+    }
+}
+
+// --- Render all images in a long strip ---
 function renderLongStrip(imageUrls) {
   const container = document.getElementById('reader-content');
   if (!container) {
     console.error('[read.js] Reader content container not found');
+    alert('Reader error: Content container missing.');
     return;
   }
 
   // Clear previous content
   container.innerHTML = '';
+
+  if (imageUrls.length === 0) {
+      container.innerHTML = '<p style="color: red;">No images found for this chapter.</p>';
+      return;
+  }
 
   // Create a wrapper div for all images
   const stripWrapper = document.createElement('div');
@@ -96,7 +124,7 @@ function renderLongStrip(imageUrls) {
   stripWrapper.style.display = 'flex';
   stripWrapper.style.flexDirection = 'column';
   stripWrapper.style.alignItems = 'center';
-  stripWrapper.style.gap = '10px'; // Space between images
+  stripWrapper.style.gap = '15px'; // Increased space between images
 
   imageUrls.forEach((url, index) => {
     const img = document.createElement('img');
@@ -115,43 +143,88 @@ function renderLongStrip(imageUrls) {
   console.log(`[read.js] Rendered ${imageUrls.length} images in long strip.`);
 }
 
-// --- NEW FUNCTION: Zoom for Long Strip ---
+// --- Populate the chapter selector dropdown ---
+function populateChapterSelector(chaptersArray, currentChapterId) {
+    const selector = document.getElementById('chapter-selector');
+    const titleDisplay = document.getElementById('manga-title-display');
+    if (!selector) {
+        console.error('[read.js] Chapter selector element not found');
+        return;
+    }
+    if (!titleDisplay) {
+        console.warn('[read.js] Manga title display element not found');
+    }
+
+    // Clear existing options
+    selector.innerHTML = '';
+
+    if (!chaptersArray || chaptersArray.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No chapters available';
+        selector.appendChild(option);
+        selector.disabled = true;
+        if (titleDisplay) titleDisplay.textContent = 'Unknown Manga';
+        return;
+    }
+
+    // Reverse chapters to show latest first, like in app.js popup
+    const reversedChapters = [...chaptersArray].reverse();
+
+    // Set manga title
+    // Assuming the first item in the API response has the title, or we get it from getMangaDetails
+    // Let's assume getMangaDetails was called and we have the title
+    // If not, we can try to get it from the first chapter's data if available, but it's cleaner from details.
+    // We'll set the title in initReader after fetching details.
+
+    reversedChapters.forEach(ch => {
+        // Use chapterId for value and display text
+        // The API seems to provide chapterId like "1", "2", etc.
+        const option = document.createElement('option');
+        option.value = ch.chapterId; // This is the ID we need for the API call
+        // Create a user-friendly label
+        option.textContent = `Chapter ${ch.chapterId}`; // You can enhance this with uploaded date etc. if available
+        // Check if this is the current chapter
+        if (ch.chapterId == currentChapterId) { // Use == for type coercion if needed
+            option.selected = true;
+        }
+        selector.appendChild(option);
+    });
+    selector.disabled = false;
+}
+
+// --- Zoom for Long Strip ---
+let stripZoomLevel = 1;
 function setStripZoom(level) {
     const strip = document.getElementById('manga-strip');
     if (strip) {
         strip.style.transform = `scale(${level})`;
         strip.style.transformOrigin = 'top center';
-        // Adjust container overflow if needed
         const container = document.getElementById('reader-content');
         if (container) {
+            // Allow horizontal scroll if zoomed in
             container.style.overflowX = level > 1 ? 'auto' : 'hidden';
         }
     }
 }
-
-// --- NEW VARIABLES for Strip Zoom ---
-let stripZoomLevel = 1;
-
 function zoomIn() {
     stripZoomLevel = Math.min(stripZoomLevel + 0.25, 3);
     console.log('[read.js] Zooming strip in. New level:', stripZoomLevel);
     setStripZoom(stripZoomLevel);
 }
-
 function zoomOut() {
     stripZoomLevel = Math.max(stripZoomLevel - 0.25, 0.5);
     console.log('[read.js] Zooming strip out. New level:', stripZoomLevel);
     setStripZoom(stripZoomLevel);
 }
 
-// Fullscreen (logic remains the same)
+// --- Fullscreen ---
 function toggleFullscreen() {
   const container = document.getElementById('reader-container');
   if (!container) {
     console.warn('[read.js] Reader container not found');
     return;
   }
-
   if (!isFullscreen) {
     container.classList.add('fullscreen');
     document.body.style.overflow = 'hidden';
@@ -164,9 +237,98 @@ function toggleFullscreen() {
   isFullscreen = !isFullscreen;
 }
 
-// Initialize reader
+// --- Chapter Navigation using Selector ---
+function prevChapter() {
+    const selector = document.getElementById('chapter-selector');
+    if (!selector || selector.disabled) return;
+
+    const selectedIndex = selector.selectedIndex;
+    if (selectedIndex > 0) {
+        selector.selectedIndex = selectedIndex - 1;
+        onChapterSelect(); // Trigger the change
+    } else {
+        alert("This is the first chapter.");
+    }
+}
+function nextChapter() {
+    const selector = document.getElementById('chapter-selector');
+    if (!selector || selector.disabled) return;
+
+    const selectedIndex = selector.selectedIndex;
+    if (selectedIndex < selector.options.length - 1) {
+        selector.selectedIndex = selectedIndex + 1;
+        onChapterSelect(); // Trigger the change
+    } else {
+        alert("This is the last chapter.");
+    }
+}
+// Handler for when user selects a chapter from the dropdown
+function onChapterSelect() {
+    const selector = document.getElementById('chapter-selector');
+    if (!selector || selector.disabled) return;
+
+    const selectedOption = selector.options[selector.selectedIndex];
+    const newChapterId = selectedOption.value;
+
+    if (!newChapterId || newChapterId === currentChapterId) {
+        // No change or invalid selection
+        return;
+    }
+
+    // Update the global variable
+    currentChapterId = newChapterId;
+
+    // Update the URL without reloading the whole page
+    const url = new URL(window.location);
+    url.searchParams.set('chapterId', currentChapterId);
+    window.history.replaceState({}, '', url);
+
+    // Reload the chapter content
+    loadCurrentChapter();
+}
+
+// --- Load the currently selected chapter ---
+async function loadCurrentChapter() {
+    if (!currentMangaId || !currentChapterId) {
+        console.error('[read.js] Cannot load chapter: Missing mangaId or chapterId');
+        return;
+    }
+
+    console.log(`[read.js] Loading chapter ${currentChapterId} for manga ${currentMangaId}`);
+    try {
+        // Show loading indicator (optional)
+        const container = document.getElementById('reader-content');
+        if (container) {
+            container.innerHTML = '<p>Loading chapter...</p>';
+        }
+
+        currentPages = await getChapterPages(currentMangaId, currentChapterId);
+        if (currentPages.length === 0) {
+            const msg = 'Failed to load pages for this chapter.';
+            console.warn('[read.js]', msg);
+            if (container) {
+                container.innerHTML = `<p style="color: red;">${msg}</p>`;
+            }
+            // alert(msg); // Optional alert
+            return;
+        }
+        renderLongStrip(currentPages);
+        // Reset zoom when loading a new chapter
+        stripZoomLevel = 1;
+        setStripZoom(stripZoomLevel);
+    } catch (e) {
+        console.error('[read.js] Failed to load chapter', e);
+        const msg = 'Failed to load chapter. Please try again.';
+        if (container) {
+            container.innerHTML = `<p style="color: red;">${msg}</p>`;
+        }
+        alert(msg);
+    }
+}
+
+// --- Initialize reader ---
 async function initReader() {
-  console.log('[read.js] Initializing reader (Long Strip Mode)...');
+  console.log('[read.js] Initializing reader (Long Strip with Selector)...');
   const params = new URLSearchParams(window.location.search);
   const mangaId = params.get('mangaId');
   const chapterId = params.get('chapterId');
@@ -175,38 +337,57 @@ async function initReader() {
     const msg = 'Invalid reader parameters. Missing mangaId or chapterId.';
     console.error('[read.js]', msg);
     alert(msg);
+    // Don't go back immediately, let user see the error
+    // window.history.back();
     return;
   }
 
-  console.log('[read.js] Parameters - Manga:', mangaId, 'Chapter:', chapterId);
+  // Store globally
+  currentMangaId = mangaId;
+  currentChapterId = chapterId;
+
+  console.log('[read.js] Parameters - Manga:', currentMangaId, 'Chapter:', currentChapterId);
 
   try {
-    currentPages = await getChapterPages(mangaId, chapterId);
-    if (currentPages.length === 0) {
-      const msg = 'No pages found for this chapter, or failed to load them.';
-      console.warn('[read.js]', msg);
-      alert(msg);
-      return;
+    // --- 1. Fetch manga details to get chapters list ---
+    console.log('[read.js] Fetching manga details for chapter list...');
+    const mangaDetails = await getMangaDetails(currentMangaId);
+    if (!mangaDetails) {
+        throw new Error('Could not load manga details.');
     }
-    console.log(`[read.js] Loaded ${currentPages.length} pages.`);
-    // Instead of loading one image, render all in a strip
-    renderLongStrip(currentPages);
+    
+    // Store chapters list
+    mangaChapters = mangaDetails.chapters && Array.isArray(mangaDetails.chapters) ? mangaDetails.chapters : [];
+    
+    // Set the manga title in the toolbar
+    const titleDisplay = document.getElementById('manga-title-display');
+    if (titleDisplay) {
+        titleDisplay.textContent = mangaDetails.title || 'Unknown Manga';
+    }
+
+    // --- 2. Populate the chapter selector ---
+    console.log(`[read.js] Populating chapter selector with ${mangaChapters.length} chapters.`);
+    populateChapterSelector(mangaChapters, currentChapterId);
+
+    // --- 3. Load the initial chapter content ---
+    await loadCurrentChapter();
+
   } catch (e) {
     console.error('[read.js] Failed to initialize reader', e);
-    alert('Failed to load chapter. Please try again. Check console for details.');
+    alert('Failed to initialize reader. Check console for details.');
   }
 }
 
-// Wait for DOM and start
+// --- Start ---
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[read.js] DOM Content Loaded. Starting init...');
   initReader();
 });
 
-// Expose functions for inline onclick attributes
-// Note: prevPage and nextPage are no longer relevant in this mode
-// window.prevPage = prevPage; // Removed
-// window.nextPage = nextPage; // Removed
+// --- Expose functions for inline onclick attributes ---
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.toggleFullscreen = toggleFullscreen;
+window.prevChapter = prevChapter;
+window.nextChapter = nextChapter;
+window.onChapterSelect = onChapterSelect; // Needed for <select onchange>
