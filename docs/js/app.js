@@ -1,8 +1,8 @@
-/* js/app.js - MangaStream Frontend (Connected to GOMANGA-API)
-   Backend base: https://gomanga-api.vercel.app
+/* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
+   API root: https://gomanga-api.vercel.app/api
 */
 
-const MR_BASE = (window.MR_BASE_OVERRIDE || 'https://gomanga-api.vercel.app').replace(/\/+$/, '');
+const API_BASE = 'https://gomanga-api.vercel.app/api'; // direct, exact endpoint root
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
@@ -33,10 +33,15 @@ function showStatus(msg, isError = false, persist = false){
 }
 
 async function apiGet(path, opts = {}){
-  const url = path.startsWith('http') ? path : (path.startsWith('/') ? `${MR_BASE}${path}` : `${MR_BASE}/${path}`);
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  const url = `${API_BASE}${normalizedPath}`; // direct absolute endpoint
   showStatus('Fetching: ' + url);
   try {
-    const res = await fetch(url, Object.assign({cache:'no-cache'}, opts));
+    const res = await fetch(url, Object.assign({
+      cache: 'no-cache',
+      mode: 'cors',
+      headers: { 'Accept': 'application/json' }
+    }, opts));
     if (!res.ok) {
       const txt = await res.text().catch(()=>'<no-body>');
       const err = `HTTP ${res.status} ${res.statusText} - ${url} - ${txt.slice(0,200)}`;
@@ -52,8 +57,9 @@ async function apiGet(path, opts = {}){
     console.log('[apiGet]', url, json);
     return json;
   } catch (err) {
+    console.error('[apiGet] failed', err);
     if (err instanceof TypeError && /failed to fetch/i.test(String(err))) {
-      showStatus('Network/CORS error when contacting MangaStream API. See console.', true, true);
+      showStatus('Network/CORS error contacting the API. The API must allow cross-origin requests for this page to work.', true, true);
     } else {
       showStatus('Request failed: ' + (err.message || err), true, true);
     }
@@ -61,11 +67,11 @@ async function apiGet(path, opts = {}){
   }
 }
 
-/* ---- FETCHERS (GOMANGA-API) ---- */
+/* ---- FETCHERS (direct to GOMANGA-API) ---- */
 
 async function getTrending() {
   try {
-    const data = await apiGet(`/api/manga-list/1`);
+    const data = await apiGet('/manga-list/1'); // GET https://gomanga-api.vercel.app/api/manga-list/1
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
@@ -83,7 +89,7 @@ async function getTrending() {
 
 async function getFeatured() {
   try {
-    const data = await apiGet(`/api/manga-list/2`);
+    const data = await apiGet('/manga-list/2'); // GET https://gomanga-api.vercel.app/api/manga-list/2
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
@@ -102,9 +108,8 @@ async function getFeatured() {
 async function searchTitles(q) {
   if (!q) return [];
   try {
-    // API examples use underscores in keyword; transform spaces -> underscores
     const searchQuery = encodeURIComponent(q.replace(/\s+/g, '_'));
-    const data = await apiGet(`/api/search/${searchQuery}`);
+    const data = await apiGet(`/search/${searchQuery}`); // GET https...
     if (!data.manga || !Array.isArray(data.manga)) return [];
     return data.manga.map(m => ({
       id: m.id,
@@ -124,7 +129,7 @@ async function searchTitles(q) {
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
-    const data = await apiGet(`/api/manga/${encodeURIComponent(mangaId)}`);
+    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`); // GET https...
     if (!data.id) throw new Error('Manga not found');
     return {
       id: data.id,
@@ -153,7 +158,7 @@ async function getInfo(mangaId) {
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) return [];
   try {
-    const data = await apiGet(`/api/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
+    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`); // GET https...
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
     return data.imageUrls;
   } catch (e) {
@@ -212,7 +217,6 @@ async function openReaderInfo(mangaId, fallback){
   const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
   const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
 
-  // Show newest chapters first (reverse)
   const chaptersArr = Array.isArray(d.chapters) ? d.chapters.slice().reverse() : [];
 
   if (chaptersArr.length === 0) {
@@ -231,7 +235,6 @@ async function openReaderInfo(mangaId, fallback){
   });
 
   if (chaptersArr.length) {
-    // select first (newest)
     chapterSel.selectedIndex = 0;
     const first = JSON.parse(chapterSel.value);
     await loadChapterPages(first.mangaId, first.chapterId);
@@ -333,7 +336,6 @@ async function searchManga(){
       };
       box.appendChild(img);
     });
-    // Hide load-more for search (API example doesn't show pagination)
     const loadMoreBtn = document.getElementById('search-load-more');
     if (loadMoreBtn) loadMoreBtn.style.display = 'none';
   } catch(e){ console.warn('searchManga failed', e); showStatus('Search error', true); }
@@ -341,13 +343,7 @@ async function searchManga(){
 }
 
 const searchMangaDebounced = debounce(searchManga, 420);
-
-/* load more for search (not available in example) */
-function loadMoreSearch(){
-  showStatus('Load more not available for search.', true);
-}
-
-/* modal helpers */
+function loadMoreSearch(){ showStatus('Load more not available for search.', true); }
 function openSearchModal(){ const m=document.getElementById('search-modal'); if(m){m.style.display='flex'; setTimeout(()=>document.getElementById('search-input')?.focus(),100);} }
 function closeSearchModal(){ const m=document.getElementById('search-modal'); if(m){m.style.display='none'; document.getElementById('search-results').innerHTML='';} }
 
@@ -364,7 +360,7 @@ async function loadMoreTrending(){
   isLoadingTrending = true;
   window._browsePage = (window._browsePage||1) + 1;
   try {
-    const data = await apiGet(`/api/manga-list/${window._browsePage}`);
+    const data = await apiGet(`/manga-list/${window._browsePage}`);
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error('Invalid data format');
     }
@@ -396,7 +392,7 @@ async function loadMoreUpdates(){
   isLoadingUpdates = true;
   window._updatesPage = (window._updatesPage||1) + 1;
   try {
-    const data = await apiGet(`/api/manga-list/${window._updatesPage}`);
+    const data = await apiGet(`/manga-list/${window._updatesPage}`);
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error('Invalid data format');
     }
