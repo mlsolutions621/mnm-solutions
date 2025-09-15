@@ -2,7 +2,7 @@
    API root: https://gomanga-api.vercel.app/api
 */
 
-const API_BASE = 'https://gomanga-api.vercel.app/api'; // direct, exact endpoint root
+const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
@@ -455,3 +455,4 @@ window.nextPage = nextPage;
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
+
