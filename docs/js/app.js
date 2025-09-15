@@ -8,19 +8,26 @@ let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
 
-// Helper: rewrite absolute image URLs to go through worker proxy
+// Helper: rewrite image URLs to go through worker proxy correctly
 function proxifyUrl(url) {
   if (!url) return url;
   try {
     const u = new URL(url);
-    // Build proxied URL: API_BASE already points to worker/proxy if override is set
-    const base = API_BASE; // e.g. https://your-worker-xyz.workers.dev/proxy
-    const upstreamPath = u.pathname + (u.search || '');
-    return base + upstreamPath;
+    // Remove "/api" prefix from path if it exists
+    let path = u.pathname;
+    if (path.startsWith('/api')) {
+      path = path.substring(4);
+    }
+    // Keep search parameters
+    const fullPath = path + (u.search || '');
+    return `${API_BASE}${fullPath}`;
   } catch(e) {
-    return url; // fallback if URL invalid
+    return url;
   }
 }
+
+// Cache for chapter images to avoid repeated requests
+const chapterImageCache = new Map();
 
 function showStatus(msg, isError = false, persist = false){
   console[isError ? 'error' : 'log']('[MANGASTREAM]', msg);
@@ -90,7 +97,7 @@ async function getTrending() {
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: proxifyUrl(m.imgUrl), // PROXIFIED
+      image: proxifyUrl(m.imgUrl),
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -108,7 +115,7 @@ async function getFeatured() {
     return data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: proxifyUrl(m.imgUrl), // PROXIFIED
+      image: proxifyUrl(m.imgUrl),
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -123,12 +130,12 @@ async function searchTitles(q) {
   if (!q) return [];
   try {
     const searchQuery = encodeURIComponent(q.replace(/\s+/g, '_'));
-    const data = await apiGet(`/search/${searchQuery}`); // GET https...
+    const data = await apiGet(`/search/${searchQuery}`);
     if (!data.manga || !Array.isArray(data.manga)) return [];
     return data.manga.map(m => ({
       id: m.id,
       title: m.title,
-      image: proxifyUrl(m.imgUrl), // PROXIFIED
+      image: proxifyUrl(m.imgUrl),
       latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
       authors: m.authors,
       views: m.views
@@ -143,12 +150,12 @@ async function searchTitles(q) {
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
-    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`); // GET https...
+    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
     if (!data.id) throw new Error('Manga not found');
     return {
       id: data.id,
       title: data.title,
-      image: proxifyUrl(data.imageUrl), // PROXIFIED
+      image: proxifyUrl(data.imageUrl),
       author: data.author,
       status: data.status,
       lastUpdated: data.lastUpdated,
@@ -171,11 +178,21 @@ async function getInfo(mangaId) {
 
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) return [];
+  
+  // Check cache first
+  const cacheKey = `${mangaId}:${chapterId}`;
+  if (chapterImageCache.has(cacheKey)) {
+    return chapterImageCache.get(cacheKey);
+  }
+  
   try {
-    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`); // GET https...
+    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
-    // PROXIFY ALL CHAPTER IMAGE URLs
-    return data.imageUrls.map(proxifyUrl);
+    
+    // Proxify and cache
+    const proxiedUrls = data.imageUrls.map(proxifyUrl);
+    chapterImageCache.set(cacheKey, proxiedUrls);
+    return proxiedUrls;
   } catch (e) {
     console.warn('getChapterPages error', e);
     showStatus('Failed to load chapter pages.', true);
@@ -225,7 +242,7 @@ async function openReaderInfo(mangaId, fallback){
   const d = await getInfo(mangaId) || fallback || null;
   if (!d) return showStatus('Could not load manga info', true);
   currentManga = d;
-  document.getElementById('reader-cover').src = proxifyUrl(d.image || fallback?.image || ''); // PROXIFIED
+  document.getElementById('reader-cover').src = d.image || fallback?.image || '';
   document.getElementById('reader-title').textContent = d.title || '';
   document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
 
@@ -254,7 +271,7 @@ async function openReaderInfo(mangaId, fallback){
     const first = JSON.parse(chapterSel.value);
     await loadChapterPages(first.mangaId, first.chapterId);
   } else {
-    currentPages = [ proxifyUrl(d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages') ]; // PROXIFIED
+    currentPages = [ proxifyUrl(d.image || fallback?.image || 'https://via.placeholder.com/800x1200?text=No+pages') ];
     currentPageIndex = 0;
     updateReaderImage();
   }
@@ -382,7 +399,7 @@ async function loadMoreTrending(){
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: proxifyUrl(m.imgUrl), // PROXIFIED
+      image: proxifyUrl(m.imgUrl),
       latestChapter: m.latestChapter,
       description: m.description
     }));
@@ -414,7 +431,7 @@ async function loadMoreUpdates(){
     const more = data.data.map(m => ({
       id: m.id,
       title: m.title,
-      image: proxifyUrl(m.imgUrl), // PROXIFIED
+      image: proxifyUrl(m.imgUrl),
       latestChapter: m.latestChapter,
       description: m.description
     }));
