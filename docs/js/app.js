@@ -1,5 +1,5 @@
 /* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
-   API root: https://gomanga-api.vercel.app/api
+   API root: https://gomanga-api.vercel.app/api  
 */
 
 const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
@@ -8,19 +8,19 @@ let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
 
-// Genre mapping (id → name)
-let genreMap = {};
-
 // Helper: rewrite image URLs to go through worker proxy correctly
 function proxifyUrl(url) {
   if (!url) return url;
   try {
     const u = new URL(url);
+    // Remove "/api" prefix from path if it exists
     let path = u.pathname;
     if (path.startsWith('/api')) {
       path = path.substring(4);
     }
-    return `${API_BASE}${path}${u.search}`;
+    // Keep search parameters
+    const fullPath = path + (u.search || '');
+    return `${API_BASE}${fullPath}`;
   } catch(e) {
     return url;
   }
@@ -55,9 +55,8 @@ function showStatus(msg, isError = false, persist = false){
 
 async function apiGet(path, opts = {}){
   const normalizedPath = path.startsWith('/') ? path : '/' + path;
-  const url = `${API_BASE}${normalizedPath}`;
-  console.log('[apiGet] Fetching:', url); // ← Only log to console
-
+  const url = `${API_BASE}${normalizedPath}`; // direct absolute endpoint
+  showStatus('Fetching: ' + url);
   try {
     const res = await fetch(url, Object.assign({
       cache: 'no-cache',
@@ -93,7 +92,7 @@ async function apiGet(path, opts = {}){
 
 async function getTrending() {
   try {
-    const data = await apiGet('/manga-list/1');
+    const data = await apiGet('/manga-list/1'); // GET https://gomanga-api.vercel.app/api/manga-list/1  
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
@@ -111,7 +110,7 @@ async function getTrending() {
 
 async function getFeatured() {
   try {
-    const data = await apiGet('/manga-list/2');
+    const data = await apiGet('/manga-list/2'); // GET https://gomanga-api.vercel.app/api/manga-list/2  
     if (!data.data || !Array.isArray(data.data)) return [];
     return data.data.map(m => ({
       id: m.id,
@@ -148,28 +147,11 @@ async function searchTitles(q) {
   }
 }
 
-async function loadGenres() {
-  try {
-    const data = await apiGet('/genre');
-    if (Array.isArray(data)) {
-      genreMap = Object.fromEntries(
-        data.map(g => [g.id, g.name])
-      );
-    }
-  } catch (e) {
-    console.warn('Failed to load genres', e);
-  }
-}
-
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
     if (!data.id) throw new Error('Manga not found');
-
-    // Map genre IDs to readable names
-    const genreNames = (data.genres || []).map(id => genreMap[id] || `Genre ${id}`).filter(Boolean);
-
     return {
       id: data.id,
       title: data.title,
@@ -178,7 +160,7 @@ async function getInfo(mangaId) {
       status: data.status,
       lastUpdated: data.lastUpdated,
       views: data.views,
-      genres: genreNames,
+      genres: data.genres,
       rating: data.rating,
       chapters: data.chapters && Array.isArray(data.chapters) ? data.chapters.map(ch => ({
         chapterId: ch.chapterId,
@@ -196,16 +178,18 @@ async function getInfo(mangaId) {
 
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) return [];
-
+  
+  // Check cache first
   const cacheKey = `${mangaId}:${chapterId}`;
   if (chapterImageCache.has(cacheKey)) {
     return chapterImageCache.get(cacheKey);
   }
-
+  
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
-
+    
+    // Proxify and cache
     const proxiedUrls = data.imageUrls.map(proxifyUrl);
     chapterImageCache.set(cacheKey, proxiedUrls);
     return proxiedUrls;
@@ -260,9 +244,7 @@ async function openReaderInfo(mangaId, fallback){
   currentManga = d;
   document.getElementById('reader-cover').src = d.image || fallback?.image || '';
   document.getElementById('reader-title').textContent = d.title || '';
-  document.getElementById('reader-description').textContent = d.genres && d.genres.length
-    ? d.genres.join(' • ')
-    : d.status || '';
+  document.getElementById('reader-description').textContent = d.genres ? d.genres.join(', ') : d.status || '';
 
   const chapterSel = document.getElementById('chapter'); if (chapterSel) chapterSel.innerHTML = '';
   const pageSel = document.getElementById('page'); if (pageSel) pageSel.innerHTML = '';
@@ -294,11 +276,7 @@ async function openReaderInfo(mangaId, fallback){
     updateReaderImage();
   }
 
-  const modal = document.getElementById('reader-modal');
-  if (modal) {
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden'; // 🔒 Prevent background scroll
-  }
+  const modal = document.getElementById('reader-modal'); if (modal) modal.style.display = 'flex';
 }
 
 async function loadChapterPages(mangaId, chapterId){
@@ -355,28 +333,9 @@ function nextPage(){
   updateReaderImage();
 }
 
-function openDedicatedReader() {
-  const chapterSel = document.getElementById('chapter');
-  const pageSel = document.getElementById('page');
-  
-  const chapterRaw = chapterSel?.value;
-  if (!chapterRaw) return showStatus('No chapter selected', true);
-  
-  const { mangaId, chapterId } = JSON.parse(chapterRaw);
-  const pageIndex = parseInt(pageSel?.value || '0', 10) || 0;
-
-  const url = new URL('read.html', window.location.origin);
-  url.searchParams.set('mangaId', mangaId);
-  url.searchParams.set('chapterId', chapterId);
-  url.searchParams.set('page', pageIndex);
-
-  window.location.href = url.toString();
-}
-
 function closeReader(){
   const modal = document.getElementById('reader-modal');
   if (modal) modal.style.display='none';
-  document.body.style.overflow = ''; // ✅ Re-enable scroll
 }
 
 /* Search UI & helpers */
@@ -495,7 +454,7 @@ async function loadMoreUpdates(){
 /* init */
 async function init(){
   try {
-    await loadGenres(); // ← Load genres first
+    showStatus('Initializing MangaStream client...');
     const [t,f] = await Promise.all([getTrending(), getFeatured()]);
     trendingItems = Array.isArray(t) ? t : [];
     featuredItems = Array.isArray(f) ? f : [];
@@ -528,4 +487,3 @@ window.nextPage = nextPage;
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
 window.loadMoreSearch = loadMoreSearch;
-window.openDedicatedReader = openDedicatedReader;
