@@ -1,95 +1,25 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Reading - MangaStream</title>
-  <link rel="icon" href="logo.png" type="image/png" />
-  <meta name="theme-color" content="#0b0b10" />
-    <script>
-      // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
-      window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
-    </script>
-  <link rel="stylesheet" href="css/style.css">
-  <style>
-    .reader-container {
-      padding: 20px;
-      max-width: 100%;
-      margin: 0 auto;
-    }
-    .reader-toolbar {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-    .reader-toolbar button {
-      padding: 8px 12px;
-      border-radius: 8px;
-      background: var(--accent);
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    .reader-content {
-      background: #000;
-      border-radius: 12px;
-      overflow: auto;
-      display: flex;
-      justify-content: center;
-      padding: 20px;
-      max-height: 80vh;
-    }
-    .reader-content img {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      display: block;
-      object-fit: contain;
-    }
-    .fullscreen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 9999;
-      background: #000;
-      padding: 0;
-      margin: 0;
-      border-radius: 0;
-    }
-    .fullscreen .reader-content {
-      max-height: 100vh;
-      border-radius: 0;
-    }
-    .fullscreen .reader-toolbar {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10000;
-      background: rgba(0,0,0,0.7);
-      padding: 8px;
-      border-radius: 20px;
-    }
-  </style>
-</head>
 <body>
   <div class="reader-container" id="reader-container">
+    <!-- Updated Toolbar -->
     <div class="reader-toolbar">
-      <button onclick="prevPage()">◀ Prev</button>
-      <button onclick="nextPage()">Next ▶</button>
+      <span id="manga-title-display" style="font-weight: bold; margin-right: 10px;"></span>
+      
+      <button onclick="prevChapter()">◀ Prev Chapter</button>
+      <label for="chapter-selector">Chapter:</label>
+      <select id="chapter-selector" onchange="onChapterSelect()"></select>
+      <button onclick="nextChapter()">Next Chapter ▶</button>
+      
       <button onclick="zoomIn()">🔍 Zoom In</button>
       <button onclick="zoomOut()">🔎 Zoom Out</button>
       <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
       <button onclick="window.history.back()">← Back</button>
     </div>
+    <!-- End Updated Toolbar -->
+    
     <div class="reader-content" id="reader-content">
-      <img id="reader-image" alt="Manga page" />
+      <img id="reader-image" alt="Manga page" /> <!-- This <img> will be replaced by the strip -->
     </div>
   </div>
 
   <script src="js/read.js"></script>
 </body>
-</html>
