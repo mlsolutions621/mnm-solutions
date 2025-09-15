@@ -39,9 +39,24 @@
       <div class="hero-actions">
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
+        <button class="btn btn-ghost" onclick="toggleGenreFilters()">Filter by Genre</button>
       </div>
     </div>
     <div class="hero-gradient"></div>
+  </section>
+
+  <!-- Genre Filter Section -->
+  <section class="section genre-filters" id="genre-filter-section" style="display: none;">
+    <div class="container">
+      <h3 style="margin-bottom: 16px;">Filter by Genre</h3>
+      <div class="genre-buttons" id="genre-buttons-container">
+        <!-- Genre buttons will be populated by JavaScript -->
+      </div>
+      <div style="margin-top: 16px;">
+        <button class="btn btn-ghost" onclick="clearGenreFilters()" style="margin-right: 10px;">Clear Filters</button>
+        <span id="active-filters" class="muted"></span>
+      </div>
+    </div>
   </section>
 
   <main>
@@ -99,12 +114,10 @@
         <div class="reader-controls">
           <label for="chapter">Chapter</label>
           <select id="chapter" onchange="changeChapter()"></select>
-          <label for="page">Page</label>
-          <select id="page" onchange="changePage()"></select>
           <div class="spacer"></div>
-          <button class="btn small" onclick="prevPage()" aria-label="Previous page">◀</button>
-          <button class="btn small" onclick="nextPage()" aria-label="Next page">▶</button>
-          <button class="btn small" onclick="openDedicatedReader()">📖 Read</button>
+          <button class="btn small" onclick="prevChapter()" aria-label="Previous chapter">◀ Prev Chapter</button>
+          <button class="btn small" onclick="nextChapter()" aria-label="Next chapter">Next Chapter ▶</button>
+          <button class="btn small" onclick="openDedicatedReader()">📖 Read Full Chapter</button>
         </div>
       </div>
 
