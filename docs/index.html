@@ -4,24 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Manga Stream</title>
-
   <link rel="icon" href="logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
-
-  <!-- Removed extra spaces in preconnect hrefs -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="css/style.css">
   <script>
-    // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
-    // Removed extra spaces in MR_BASE_OVERRIDE
     window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
   </script>
   <script defer src="js/app.js"></script>
 </head>
-
 <body>
   <header class="site-header">
     <div class="container nav">
@@ -33,7 +26,6 @@
       </nav>
     </div>
   </header>
-
   <section class="hero" id="hero">
     <div class="container hero-inner">
       <h1>Read Manga Instantly</h1>
@@ -41,26 +33,11 @@
       <div class="hero-actions">
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
-        <button class="btn btn-ghost" onclick="toggleGenreFilters()">Filter by Genre</button>
+        <button class="btn btn-ghost" onclick="toggleGenreFilters()">Filter</button>
       </div>
     </div>
     <div class="hero-gradient"></div>
   </section>
-
-  <!-- Genre Filter Section -->
-  <section class="section genre-filters" id="genre-filter-section" style="display: none;">
-    <div class="container">
-      <h3 style="margin-bottom: 16px;">Filter by Genre</h3>
-      <div class="genre-buttons" id="genre-buttons-container">
-        <!-- Genre buttons will be populated by JavaScript -->
-      </div>
-      <div style="margin-top: 16px;">
-        <button class="btn btn-ghost" onclick="clearGenreFilters()" style="margin-right: 10px;">Clear Filters</button>
-        <span id="active-filters" class="muted"></span>
-      </div>
-    </div>
-  </section>
-
   <main>
     <!-- Trending Section -->
     <section class="section" id="trending-section">
@@ -73,7 +50,6 @@
       </div>
       <div id="sentinel-trending" style="height: 1px;"></div>
     </section>
-
     <!-- Updates Section -->
     <section class="section" id="updates-section">
       <div class="container section-header">
@@ -87,7 +63,6 @@
       <div id="sentinel-updates" style="height: 1px;"></div>
     </section>
   </main>
-
   <!-- Search modal -->
   <div class="search-modal" id="search-modal" aria-hidden="true">
     <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
@@ -99,12 +74,22 @@
       </div>
     </div>
   </div>
-
-  <!-- Reader Modal (Modified: Removed Prev/Next Chapter buttons) -->
+  <!-- Filter modal (new) -->
+  <div class="filter-modal" id="filter-modal" aria-hidden="true" style="display:none;">
+    <button class="close" onclick="closeFilterModal()" aria-label="Close">×</button>
+    <div class="search-box">
+      <h3 style="margin-bottom:10px;">Filter by genre</h3>
+      <div id="filter-checkboxes" style="max-height:320px; overflow:auto; margin-bottom:12px; padding-right:6px;"></div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="clearFiltersFromModal()">Clear</button>
+        <button class="btn" onclick="applyFilterFromModal()">Apply</button>
+      </div>
+    </div>
+  </div>
+  <!-- Reader Modal -->
   <div class="modal" id="reader-modal" aria-hidden="true">
     <div class="modal-content">
       <button class="close" onclick="closeReader()" aria-label="Close">×</button>
-
       <div class="reader-head">
         <div class="reader-meta">
           <img id="reader-cover" alt="Cover" />
@@ -117,40 +102,22 @@
           <label for="chapter">Chapter</label>
           <select id="chapter" onchange="changeChapter()"></select>
           <div class="spacer"></div>
-          <!-- Removed: <button class="btn small" onclick="prevChapter()" aria-label="Previous chapter">◀ Prev Chapter</button> -->
-          <!-- Removed: <button class="btn small" onclick="nextChapter()" aria-label="Next chapter">Next Chapter ▶</button> -->
           <button class="btn small" onclick="openDedicatedReader()">📖 Read Full Chapter</button>
         </div>
       </div>
-
       <div class="reader-stage">
-        <img id="reader-image" alt="Manga page" /> <!-- This will be replaced by the long strip -->
+        <img id="reader-image" alt="Manga page" />
       </div>
     </div>
   </div>
   <!-- End Reader Modal -->
-
-  <!-- Details Modal (New) -->
+  <!-- Details Modal -->
   <div class="modal" id="details-modal" aria-hidden="true">
     <div class="modal-content">
-      <button class="close" onclick="closeDetailsModal()" aria-label="Close">×</button>
-      <div class="reader-head">
-        <div class="reader-meta">
-          <!-- This is the element app.js was looking for -->
-          <img id="details-cover" alt="Cover" />
-          <div>
-            <h3 id="details-title"></h3>
-            <p id="details-description" class="muted"></p>
-          </div>
-        </div>
-        <div class="reader-controls" style="justify-content: flex-end;">
-          <button class="btn" onclick="openDedicatedReaderFromDetails()">📖 Read Manga</button>
-        </div>
-      </div>
+      <!-- content is injected by js -->
     </div>
   </div>
   <!-- End Details Modal -->
-
   <footer class="site-footer">
     <div class="container footer-inner">
       <p>© 2025 MangaStream. All rights reserved.</p>
@@ -160,6 +127,5 @@
       </div>
     </div>
   </footer>
-
 </body>
 </html>
