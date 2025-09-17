@@ -6,94 +6,116 @@
   <title>Manga Stream</title>
   <link rel="icon" href="logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="css/style.css">
+
   <script>
+    // Worker proxy override — keep as exact URL (no extra spaces)
     window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
   </script>
+
   <script defer src="js/app.js"></script>
 </head>
+
 <body>
   <header class="site-header">
     <div class="container nav">
       <a class="brand" href="#">Manga<span>Stream</span></a>
-      <nav class="menu">
+      <nav class="menu" aria-label="Main menu">
         <a href="#trending-section">Trending</a>
         <a href="#updates-section">Updates</a>
-        <!-- Buttons moved inside hero-actions in hero section -->
+        <!-- Intentionally left minimal — search & filter are placed in hero area -->
       </nav>
     </div>
   </header>
+
   <section class="hero" id="hero">
     <div class="container hero-inner">
       <h1>Read Manga Instantly</h1>
       <p class="tagline">Discover trending titles, browse chapters, and enjoy a clean, focused reader.</p>
-      <div class="hero-actions">
+
+      <div class="hero-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
-        <!-- Buttons moved here and aligned to the right -->
-        <div class="hero-actions-right">
-            <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
-            <button class="btn btn-ghost" onclick="toggleGenreFilters()">Filter</button>
+
+        <div class="hero-actions-right" style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-ghost" onclick="openSearchModal()" aria-haspopup="dialog">Search Manga</button>
+          <button class="btn btn-ghost" onclick="toggleGenreFilters()" aria-haspopup="dialog">Filter</button>
         </div>
       </div>
     </div>
     <div class="hero-gradient"></div>
   </section>
+
   <main>
+    <!-- Trending Section -->
     <section class="section" id="trending-section">
       <div class="container section-header">
         <h2>Trending Manga</h2>
       </div>
-      <div class="container scroller" id="manga-list" aria-live="polite"></div>
-      <div class="container load-more-row"> <!-- This will now be centered -->
+
+      <div class="container scroller" id="manga-list" aria-live="polite" role="region" aria-label="Trending manga list"></div>
+
+      <div class="container load-more-row" style="margin-top:12px;">
         <button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button>
       </div>
+
       <div id="sentinel-trending" style="height: 1px;"></div>
     </section>
 
+    <!-- Updates Section -->
     <section class="section" id="updates-section">
       <div class="container section-header">
         <h2>Latest Updates</h2>
         <p class="muted">Recently updated chapters</p>
       </div>
-      <div class="container grid" id="updates-list" aria-live="polite"></div>
-      <div class="container load-more-row"> <!-- This will now be centered -->
+
+      <div class="container grid" id="updates-list" aria-live="polite" role="region" aria-label="Latest updates"></div>
+
+      <div class="container load-more-row" style="margin-top:12px;">
         <button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button>
       </div>
+
       <div id="sentinel-updates" style="height: 1px;"></div>
     </section>
   </main>
 
-  <div class="search-modal" id="search-modal" aria-hidden="true">
-    <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
-    <div class="search-box">
-      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" />
-      <div class="results" id="search-results"></div>
-      <div class="load-more-row">
+  <!-- Search modal -->
+  <div class="search-modal" id="search-modal" aria-hidden="true" role="dialog" aria-label="Search manga">
+    <button class="close" onclick="closeSearchModal()" aria-label="Close search dialog">×</button>
+    <div class="search-box" role="document">
+      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" aria-label="Search input" />
+      <div class="results" id="search-results" aria-live="polite"></div>
+      <div class="load-more-row" style="margin-top:10px;">
         <button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button>
       </div>
     </div>
   </div>
 
-  <div class="filter-modal" id="filter-modal" aria-hidden="true" style="display:none;">
-    <button class="close" onclick="closeFilterModal()" aria-label="Close">×</button>
-    <div class="search-box">
-      <h3 style="margin-bottom:10px;">Filter by genre</h3>
+  <!-- Filter modal (checkbox checklist) -->
+  <div class="filter-modal" id="filter-modal" aria-hidden="true" role="dialog" aria-label="Filter manga by genre" style="display:none;">
+    <button class="close" onclick="closeFilterModal()" aria-label="Close filter dialog">×</button>
+    <div class="search-box" role="document">
+      <h3 style="margin-bottom:10px;">Filter</h3>
       <div id="filter-checkboxes" style="max-height:320px; overflow:auto; margin-bottom:12px; padding-right:6px;">
          <p class="muted">Loading genres...</p> <!-- Temporary loading text -->
       </div>
       <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button class="btn btn-ghost" onclick="clearFiltersFromModal()">Clear</button>
-        <button class="btn" onclick="applyFilterFromModal()">Apply</button>
+        <button class="btn btn-ghost" onclick="clearFiltersFromModal()" aria-label="Clear filters">Clear</button>
+        <button class="btn" onclick="applyFilterFromModal()" aria-label="Apply filters">Apply</button>
       </div>
     </div>
   </div>
 
-  <div class="modal" id="reader-modal" aria-hidden="true">
-    <div class="modal-content">
-      <button class="close" onclick="closeReader()" aria-label="Close">×</button>
+  <!-- Reader Modal -->
+  <div class="modal" id="reader-modal" aria-hidden="true" role="dialog" aria-label="Reader">
+    <div class="modal-content" role="document">
+      <button class="close" onclick="closeReader()" aria-label="Close reader">×</button>
+
       <div class="reader-head">
         <div class="reader-meta">
           <img id="reader-cover" alt="Cover" />
@@ -102,22 +124,24 @@
             <p id="reader-description" class="muted"></p>
           </div>
         </div>
-        <div class="reader-controls">
+
+        <div class="reader-controls" role="toolbar" aria-label="Reader controls">
           <label for="chapter">Chapter</label>
-          <select id="chapter" onchange="changeChapter()"></select>
-          <div class="spacer"></div>
+          <select id="chapter" onchange="changeChapter()" aria-label="Select chapter"></select>
+          <div class="spacer" aria-hidden="true"></div>
           <button class="btn small" onclick="openDedicatedReader()">📖 Read Full Chapter</button>
         </div>
       </div>
-      <div class="reader-stage">
+
+      <div class="reader-stage" role="region" aria-label="Reader stage">
         <img id="reader-image" alt="Manga page" />
       </div>
     </div>
   </div>
 
-  <div class="modal" id="details-modal" aria-hidden="true">
-    <div class="modal-content">
-    </div>
+  <!-- Details Modal (content injected by js) -->
+  <div class="modal" id="details-modal" aria-hidden="true" role="dialog" aria-label="Manga details">
+    <div class="modal-content"></div>
   </div>
 
   <footer class="site-footer">
