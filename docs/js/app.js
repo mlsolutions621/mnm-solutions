@@ -109,11 +109,27 @@ async function searchTitles(q) {
     const searchQuery = encodeURIComponent(q.replace(/\s+/g, '_'));
     const data = await apiGet(`/search/${searchQuery}`);
     if (!data.manga || !Array.isArray(data.manga)) return [];
-    return data.manga.map(m => ({
-      id: m.id, title: m.title, image: proxifyUrl(m.imgUrl),
-      latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
-      authors: m.authors, views: m.views, genres: m.genres || []
-    }));
+    return data.manga.map(m => {
+      // Handle different API response structures for genres
+      let genres = [];
+      if (m.genres && Array.isArray(m.genres)) {
+        genres = m.genres;
+      } else if (m.genre && Array.isArray(m.genre)) {
+        genres = m.genre;
+      } else if (m.genre) {
+        genres = [m.genre];
+      }
+      
+      return {
+        id: m.id, 
+        title: m.title, 
+        image: proxifyUrl(m.imgUrl || m.image),
+        latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
+        authors: m.authors, 
+        views: m.views, 
+        genres: genres
+      };
+    });
   } catch (e) {
     console.warn('searchTitles failed', e);
     return [];
@@ -434,7 +450,10 @@ async function populateSearchResultsFromFilters() {
     if (isSearchFilterActive && searchActiveGenreFilters.size > 0) {
       console.log('[app.js] Applying search modal genre filters:', Array.from(searchActiveGenreFilters));
       items = items.filter(m => {
-        if (!m.genres || !Array.isArray(m.genres)) return false;
+        if (!m.genres || !Array.isArray(m.genres)) {
+          console.log('[app.js] No genres for', m.title);
+          return false;
+        }
         // Normalize all manga genres to lowercase keys for comparison
         const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
         console.log('[app.js] Manga genres for', m.title, ':', mangaGenreKeys);
