@@ -432,17 +432,28 @@ async function populateSearchResultsFromFilters() {
 
     // Apply filters ONLY if search filter is active
     if (isSearchFilterActive && searchActiveGenreFilters.size > 0) {
-      console.log('[app.js] Applying search modal genre filters:', searchActiveGenreFilters);
+      console.log('[app.js] Applying search modal genre filters:', Array.from(searchActiveGenreFilters));
       items = items.filter(m => {
         if (!m.genres || !Array.isArray(m.genres)) return false;
         // Normalize all manga genres to lowercase keys for comparison
         const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
+        console.log('[app.js] Manga genres for', m.title, ':', mangaGenreKeys);
         // Check if any of the manga's genre keys match active filters
-        return mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+        const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+        if (matches) {
+          console.log('[app.js] Match found for', m.title, 'with genres:', mangaGenreKeys);
+        }
+        return matches;
       });
     }
 
-    if (!items || items.length === 0) { box.innerHTML = '<p class="muted">No results found.</p>'; return; }
+    if (!items || items.length === 0) { 
+      box.innerHTML = '<p class="muted">No results found.</p>'; 
+      console.log('[app.js] No items after filtering');
+      return; 
+    }
+
+    console.log('[app.js] Items after filtering:', items.length);
 
     box.innerHTML = '';
     items.forEach(m => {
@@ -656,19 +667,31 @@ async function createGenreCheckboxes() {
         if (activeGenreFilters.has(e.key)) cb.checked = true;
     }
 
-    cb.onchange = evt => {
+    cb.onchange = function(evt) {
       const v = evt.target.value;
       const searchModal = document.getElementById('search-modal');
       const isSearchOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
 
+      console.log('[app.js] Checkbox changed:', v, 'checked:', evt.target.checked, 'isSearchOpen:', isSearchOpen);
+
       if (isSearchOpen) {
           // If search modal is open, modify search filters
-          if (evt.target.checked) searchActiveGenreFilters.add(v);
-          else searchActiveGenreFilters.delete(v);
+          if (evt.target.checked) {
+            searchActiveGenreFilters.add(v);
+            console.log('[app.js] Added to search filters:', v, 'new size:', searchActiveGenreFilters.size);
+          } else {
+            searchActiveGenreFilters.delete(v);
+            console.log('[app.js] Removed from search filters:', v, 'new size:', searchActiveGenreFilters.size);
+          }
       } else {
           // If main view, modify main filters
-          if (evt.target.checked) activeGenreFilters.add(v);
-          else activeGenreFilters.delete(v);
+          if (evt.target.checked) {
+            activeGenreFilters.add(v);
+            console.log('[app.js] Added to main filters:', v, 'new size:', activeGenreFilters.size);
+          } else {
+            activeGenreFilters.delete(v);
+            console.log('[app.js] Removed from main filters:', v, 'new size:', activeGenreFilters.size);
+          }
       }
       updateGenreButtonStates(); // Update UI to reflect change
     };
@@ -756,6 +779,7 @@ function applyFilterFromModal() {
   if (isSearchOpen) {
     // If search modal is open, activate search filters and refresh search results
     console.log('[app.js] Filter applied while search modal open — refreshing search results.');
+    console.log('[app.js] Current search filters:', Array.from(searchActiveGenreFilters));
     isSearchFilterActive = searchActiveGenreFilters.size > 0;
     populateSearchResultsFromFilters();
   } else {
