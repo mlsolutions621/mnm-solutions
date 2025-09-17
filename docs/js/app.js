@@ -6,7 +6,7 @@ let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], allMangaItems = [], filteredMangaItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
 let genreMap = {};
-let activeGenreFilters = new Set(); // Track active genre filters
+let activeGenreFilters = new Set(); // Track active genre filters for main view
 // --- For Details Modal ---
 let currentDetailsMangaId = null;
 let firstChapterIdForDetails = null;
@@ -701,7 +701,7 @@ function createGenreCheckboxes() {
     const searchModal = document.getElementById('search-modal');
     const isSearchOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
     if (isSearchOpen) {
-        // If search modal is open, check against search filters (KEY FIX: .toLowerCase())
+        // If search modal is open, check against search filters
         if (searchActiveGenreFilters.has(genre.toLowerCase())) cb.checked = true;
     } else {
         // If main view, check against main filters
@@ -771,7 +771,7 @@ function applyGenreFilters() {
   }
   const filtered = allMangaItems.filter(manga => {
     if (!manga.genres || !Array.isArray(manga.genres)) return false;
-    // sanitize and normalize incoming manga genres for case-insensitive comparison (KEY FIX: .toLowerCase())
+    // sanitize incoming manga genres for comparison (KEY FIX: .toLowerCase())
     const normalized = manga.genres.map(g => String(g).replace(/^genre\s*[:\-\s]*/i,'').trim().toLowerCase());
     return normalized.some(genre => activeGenreFilters.has(genre));
   });
