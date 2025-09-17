@@ -173,6 +173,7 @@ function populateGenresFromMangaItems() {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
         if (!g) return;
+        // sanitize same as details modal: remove leading "genre"
         const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
         if (name) allGenresSet.add(name);
       });
@@ -601,6 +602,7 @@ function closeSearchModal() {
   }
 }
 
+/* ---- Observers and pagination helpers ---- */
 function createObserver(targetId, callback) {
   const el = document.getElementById(targetId);
   if (!el) return;
@@ -680,13 +682,12 @@ async function loadMoreUpdates() {
 
 /* ---- Genre Filter Functions (modal + checklist) ---- */
 
-function toggleGenreFilters() { openFilterModal(); }
-
-function openFilterModal() {
+// Make openFilterModal async and await checkbox creation, so the modal always shows data
+async function openFilterModal() {
   const m = document.getElementById('filter-modal');
   if (!m) return;
   // Ensure checkboxes are populated when modal opens (uses latest allMangaItems / API genres)
-  createGenreCheckboxes();
+  await createGenreCheckboxes();
   m.style.display = 'flex';
   // Optional: focus first checkbox for keyboard users
   setTimeout(() => {
@@ -694,30 +695,43 @@ function openFilterModal() {
     if (firstCb) firstCb.focus();
   }, 50);
 }
-
 function closeFilterModal() {
   const m = document.getElementById('filter-modal');
   if (m) { m.style.display = 'none'; }
 }
+function toggleGenreFilters() { openFilterModal(); }
 
-// --- createGenreCheckboxes uses allGenresSet ---
-function createGenreCheckboxes() {
+// --- REPLACED: createGenreCheckboxes is now async and ensures genres are loaded ---
+async function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
 
-  // Clear previous content
-  container.innerHTML = '';
+  // Show loading placeholder immediately
+  container.innerHTML = '<p class="muted">Loading genres...</p>';
 
-  // Use the global allGenresSet populated by loadGenres or fallback
+  // If no genres yet, try to fetch them (loadGenres will populate allGenresSet or fallback)
+  if (allGenresSet.size === 0) {
+    try {
+      await loadGenres();
+    } catch (e) {
+      // loadGenres has its own fallback; ignore error here
+    }
+    // still empty? try populating from current manga list
+    if (allGenresSet.size === 0) {
+      populateGenresFromMangaItems();
+    }
+  }
+
+  // If still empty after attempts, show message and return
   if (allGenresSet.size === 0) {
     container.innerHTML = '<p class="muted">No genres available.</p>';
-    console.log('[app.js] createGenreCheckboxes: allGenresSet is empty.');
+    console.log('[app.js] createGenreCheckboxes: allGenresSet is empty after load attempts.');
     return;
   }
 
-  // Sort genres alphabetically
+  // Clear previous content and build the checklist
+  container.innerHTML = '';
   const sortedGenres = Array.from(allGenresSet).sort((a, b) => a.localeCompare(b));
-
   sortedGenres.forEach(genre => {
     const id = `filter_genre_${genre.replace(/[^a-z0-9]+/ig,'_').toLowerCase()}`;
     const label = document.createElement('label');
@@ -730,16 +744,11 @@ function createGenreCheckboxes() {
     cb.type = 'checkbox';
     cb.id = id;
     cb.value = genre;
-    // Set checkbox state based on active filters
     if (activeGenreFilters.has(genre)) cb.checked = true;
 
     cb.onchange = (e) => {
-      if (e.target.checked) {
-        activeGenreFilters.add(genre);
-      } else {
-        activeGenreFilters.delete(genre);
-      }
-      // updateGenreButtonStates is primarily for modal sync if needed elsewhere
+      if (e.target.checked) activeGenreFilters.add(genre);
+      else activeGenreFilters.delete(genre);
     };
 
     const span = document.createElement('span');
@@ -749,8 +758,10 @@ function createGenreCheckboxes() {
     label.appendChild(span);
     container.appendChild(label);
   });
+
   console.log('[app.js] Filter checkboxes created from allGenresSet.');
 }
+// --- END REPLACED ---
 
 function updateGenreButtonStates() {
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
@@ -786,7 +797,6 @@ function applyGenreFilters() {
 }
 
 function applyFilterFromModal() {
-  // Close modal and apply filters to the main trending list
   closeFilterModal();
   applyGenreFilters();
   updateGenreButtonStates();
