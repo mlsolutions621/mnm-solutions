@@ -6,23 +6,23 @@ let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], allMangaItems = [], filteredMangaItems = [];
 let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false;
 let genreMap = {};
+// activeGenreFilters now stores normalized keys (lowercase)
 let activeGenreFilters = new Set();
 let currentDetailsMangaId = null;
 let firstChapterIdForDetails = null;
 
-// --- Genre Set for Filter Modal ---
-let allGenresSet = new Set(); // Global Set to store unique genre names for filtering
-let genresLoadingPromise = null; // singleton promise for /genre fetch
-let initDone = false; // set to true at end of init()
+// --- Genre Sets/Maps ---
+let allGenresKeySet = new Set();               // stores normalized genre keys (lowercase)
+let genreDisplayByKey = new Map();             // key => display name (original-cased nicely)
+let genresLoadingPromise = null;               // singleton promise for /genre fetch
+let initDone = false;
 
 function proxifyUrl(url) {
   if (!url) return url;
   try {
     const u = new URL(url);
     let path = u.pathname;
-    if (path.startsWith('/api')) {
-      path = path.substring(4);
-    }
+    if (path.startsWith('/api')) path = path.substring(4);
     return `${API_BASE}${path}${u.search}`;
   } catch (e) {
     return url;
@@ -70,8 +70,7 @@ async function apiGet(path, opts = {}) {
   }
 }
 
-/* ---- FETCHERS (direct to GOMANGA-API) ---- */
-
+/* ---- FETCHERS ---- */
 async function getTrending() {
   try {
     const data = await apiGet('/manga-list/1');
@@ -129,64 +128,76 @@ async function searchTitles(q) {
   }
 }
 
-// --- loadGenres is a singleton (avoids concurrent fetch races) ---
+/* ---- GENRES: load from API (singleton) or fallback ---- */
+function normalizeGenreName(name) {
+  if (!name) return '';
+  return String(name).replace(/^genre\s*[:\-\s]*/i, '').trim();
+}
+function genreKeyFromName(name) {
+  return normalizeGenreName(name).toLowerCase();
+}
+
 function loadGenres() {
-  if (genresLoadingPromise) return genresLoadingPromise; // return existing in-flight promise
+  if (genresLoadingPromise) return genresLoadingPromise;
   genresLoadingPromise = (async () => {
     try {
       const data = await apiGet('/genre');
       console.log('[app.js] Genre data loaded:', data);
-      // Different possible shapes: { genre: [...] } or array of strings or array of objects
       if (data && Array.isArray(data.genre)) {
-        // API returned { genre: [...] }
         data.genre.forEach(g => {
-          if (g) {
-            const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-            if (name) allGenresSet.add(name);
+          if (!g) return;
+          const display = normalizeGenreName(g);
+          const key = genreKeyFromName(display);
+          if (key) {
+            allGenresKeySet.add(key);
+            // prefer preserving nicer display capitalization if not present
+            if (!genreDisplayByKey.has(key)) genreDisplayByKey.set(key, display);
           }
         });
-        console.log('[app.js] allGenresSet populated from API.genre:', allGenresSet);
       } else if (Array.isArray(data)) {
-        // data is an array - try to extract string / object.name / object.genre
         data.forEach(item => {
-          let name = null;
-          if (typeof item === 'string') name = item;
-          else if (item && (item.name || item.genre)) name = item.name || item.genre;
-          if (name) {
-            const cleaned = String(name).replace(/^genre\s*[:\-\s]*/i, '').trim();
-            if (cleaned) allGenresSet.add(cleaned);
+          let candidate = null;
+          if (typeof item === 'string') candidate = item;
+          else if (item && (item.name || item.genre)) candidate = item.name || item.genre;
+          if (!candidate) return;
+          const display = normalizeGenreName(candidate);
+          const key = genreKeyFromName(display);
+          if (key) {
+            allGenresKeySet.add(key);
+            if (!genreDisplayByKey.has(key)) genreDisplayByKey.set(key, display);
           }
         });
-        console.log('[app.js] allGenresSet populated from array response:', allGenresSet);
       } else {
         console.warn('[app.js] Unexpected genre data format:', data);
-        // don't throw - leave caller to fallback to manga items
       }
     } catch (e) {
       console.warn('[app.js] Failed to load genres from API endpoint', e);
     } finally {
-      return allGenresSet;
+      return allGenresKeySet;
     }
   })();
   return genresLoadingPromise;
 }
 
-// Helper to populate allGenresSet from existing manga data if /genre API fails or is empty
 function populateGenresFromMangaItems() {
-  console.log('[app.js] Falling back to populating genres from manga items.');
-  // DO NOT clear — we want to preserve any API-loaded genres
+  console.log('[app.js] populateGenresFromMangaItems (fallback) running');
   allMangaItems.forEach(item => {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
         if (!g) return;
-        const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-        if (name) allGenresSet.add(name);
+        const display = normalizeGenreName(g);
+        const key = genreKeyFromName(display);
+        if (key) {
+          allGenresKeySet.add(key);
+          if (!genreDisplayByKey.has(key)) genreDisplayByKey.set(key, display);
+        }
       });
     }
   });
-  console.log('[app.js] allGenresSet populated from manga items (fallback):', allGenresSet);
+  console.log('[app.js] allGenresKeySet after fallback:', allGenresKeySet);
 }
 
+/* ---- Info / Chapter loaders ---- */
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
@@ -221,9 +232,7 @@ async function getInfo(mangaId) {
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) return [];
   const cacheKey = `${mangaId}:${chapterId}`;
-  if (chapterImageCache.has(cacheKey)) {
-    return chapterImageCache.get(cacheKey);
-  }
+  if (chapterImageCache.has(cacheKey)) return chapterImageCache.get(cacheKey);
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) return [];
@@ -236,6 +245,7 @@ async function getChapterPages(mangaId, chapterId) {
   }
 }
 
+/* ---- UI renderers ---- */
 function renderTrending(items) {
   const list = document.getElementById('manga-list');
   if (!list) { console.warn('Missing container #manga-list'); return; }
@@ -272,7 +282,7 @@ function renderUpdates(items) {
   });
 }
 
-// --- MODIFIED: Load all chapter pages and render them as a long strip in the popup ---
+/* Reader functions (unchanged except small cleanup) */
 async function loadChapterPages(mangaId, chapterId) {
   console.log(`[app.js] Loading pages for chapter ${chapterId} of manga ${mangaId} (Popup)`);
   const arr = await getChapterPages(mangaId, chapterId);
@@ -281,11 +291,9 @@ async function loadChapterPages(mangaId, chapterId) {
   updateReaderImage();
 }
 
-// --- MODIFIED: Update the reader image area in the popup to show a long strip ---
 function updateReaderImage() {
   const stage = document.querySelector('#reader-modal .reader-stage');
   if (!stage) {
-    console.error('[app.js] Reader stage element not found in popup');
     const img = document.getElementById('reader-image');
     if (img) {
       img.src = currentPages[currentPageIndex] || '';
@@ -317,21 +325,19 @@ function updateReaderImage() {
     stripWrapper.appendChild(img);
   });
   stage.appendChild(stripWrapper);
-  console.log('[app.js] Rendered chapter pages as a long strip in the popup modal.');
 }
 
+/* reader/navigation helpers */
 function changeChapter() {
   const raw = document.getElementById('chapter')?.value;
   if (!raw) return;
   const c = JSON.parse(raw);
   loadChapterPages(c.mangaId, c.chapterId);
 }
-
 function getCurrentChapterIndex() {
   const chapterSel = document.getElementById('chapter');
   return chapterSel ? chapterSel.selectedIndex : -1;
 }
-
 function openDedicatedReader() {
   const chapterSel = document.getElementById('chapter');
   const chapterRaw = chapterSel?.value;
@@ -346,14 +352,13 @@ function openDedicatedReader() {
   url.searchParams.set('page', 0);
   window.location.href = url.toString();
 }
-
 function closeReader() {
   const modal = document.getElementById('reader-modal');
   if (modal) modal.style.display = 'none';
   document.body.style.overflow = '';
 }
 
-/* ---- Details Modal (Enhanced) ---- */
+/* ---- Details Modal (keeps previous look) ---- */
 async function openDetailsModal(mangaId, fallbackData) {
   console.log(`[app.js] Opening details modal for manga: ${mangaId}`);
   const mangaData = await getInfo(mangaId) || fallbackData || null;
@@ -367,115 +372,97 @@ async function openDetailsModal(mangaId, fallbackData) {
       const sortedChapters = [...mangaData.chapters].sort((a, b) => {
           const numA = parseFloat(a.chapterId);
           const numB = parseFloat(b.chapterId);
-          if (!isNaN(numA) && !isNaN(numB)) {
-              return numA - numB;
-          }
+          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
           return String(a.chapterId).localeCompare(String(b.chapterId), undefined, { numeric: true, sensitivity: 'base' });
       });
       firstChapterIdForDetails = sortedChapters[0]?.chapterId || null;
-      console.log(`[app.js] First chapter ID determined: ${firstChapterIdForDetails}`);
-  } else {
-      console.warn(`[app.js] No chapters found for manga ${mangaId}`);
   }
 
   const modalContent = document.querySelector('#details-modal .modal-content');
   if (!modalContent) {
-      console.error('[app.js] Details modal content container not found');
-      showStatus('Error displaying manga details', true);
-      return;
+    showStatus('Error displaying manga details', true);
+    return;
   }
 
+  // build details (kept similar to previous)
   modalContent.innerHTML = `
     <button class="close" onclick="closeDetailsModal()" aria-label="Close">×</button>
-    <div class="reader-head" style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,.05);">
+    <div class="reader-head" style="padding:16px;border-bottom:1px solid rgba(255,255,255,.05)">
       <div class="reader-meta">
-        <img id="details-cover" src="${mangaData.image || fallbackData?.image || ''}" alt="Cover" style="width: 80px; height: 110px; border-radius: 8px; object-fit: cover;" />
+        <img id="details-cover" src="${mangaData.image || fallbackData?.image || ''}" alt="Cover" style="width:80px;height:110px;border-radius:8px;object-fit:cover" />
         <div>
-          <h3 id="details-title" style="margin: 0 0 8px;">${mangaData.title || 'Unknown Title'}</h3>
-          <p class="muted" style="margin: 4px 0; font-size: 0.9rem;">Author: ${mangaData.author || 'Unknown'}</p>
-          <p class="muted" style="margin: 4px 0; font-size: 0.9rem;">Status: ${mangaData.status || 'Unknown'}</p>
-          <div id="details-genres" style="margin: 8px 0; display:flex; flex-wrap:wrap; gap:6px;">
-          </div>
+          <h3 id="details-title" style="margin:0 0 8px;">${mangaData.title || 'Unknown Title'}</h3>
+          <p class="muted" style="margin:4px 0;font-size:0.9rem">Author: ${mangaData.author || 'Unknown'}</p>
+          <p class="muted" style="margin:4px 0;font-size:0.9rem">Status: ${mangaData.status || 'Unknown'}</p>
+          <div id="details-genres" style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
       </div>
     </div>
-    <div style="padding: 16px;">
-      <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; font-size: 0.9rem;">
+    <div style="padding:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:15px;font-size:0.9rem">
         <span class="muted">Last Updated: ${mangaData.lastUpdated || 'N/A'}</span>
         <span class="muted">Views: ${mangaData.views || 'N/A'}</span>
         <span class="muted">Rating: ${mangaData.rating || 'N/A'}</span>
       </div>
-      <p id="details-description-main" style="margin: 16px 0; line-height: 1.6;">
-        ${mangaData.description || mangaData.summary || 'No description available for this manga.'}
-      </p>
-      <h4 style="margin: 20px 0 10px;">Chapters</h4>
-      <div id="details-chapter-list" style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 10px;">
-        <p style="color: var(--muted); text-align: center;">Loading chapters...</p>
-      </div>
-      <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+      <p id="details-description-main" style="margin:16px 0;line-height:1.6">${mangaData.description || mangaData.summary || 'No description available.'}</p>
+      <h4 style="margin:20px 0 10px">Chapters</h4>
+      <div id="details-chapter-list" style="max-height:300px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px"></div>
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
         <button class="btn" onclick="openDedicatedReaderFromDetails()">📖 Read Manga</button>
       </div>
     </div>
   `;
 
   const genresContainer = modalContent.querySelector('#details-genres');
-  if (genresContainer && mangaData.genres && Array.isArray(mangaData.genres) && mangaData.genres.length > 0) {
-      genresContainer.innerHTML = '';
+  if (genresContainer) {
+    genresContainer.innerHTML = '';
+    if (mangaData.genres && Array.isArray(mangaData.genres) && mangaData.genres.length > 0) {
       const used = new Set();
-      mangaData.genres.forEach(genreRaw => {
-          if (!genreRaw) return;
-          let genre = String(genreRaw).trim();
-          genre = genre.replace(/^genre\s*[:\-\s]*/i, '').trim();
-          if (!genre) return;
-          if (used.has(genre.toLowerCase())) return;
-          used.add(genre.toLowerCase());
-          const genreSpan = document.createElement('span');
-          genreSpan.className = 'genre-pill';
-          genreSpan.textContent = genre;
-          genresContainer.appendChild(genreSpan);
+      mangaData.genres.forEach(raw => {
+        if (!raw) return;
+        const d = normalizeGenreName(raw);
+        const key = genreKeyFromName(d);
+        if (!d) return;
+        if (used.has(key)) return;
+        used.add(key);
+        const span = document.createElement('span');
+        span.className = 'genre-pill';
+        span.textContent = d;
+        genresContainer.appendChild(span);
       });
-  } else if (genresContainer) {
-      genresContainer.innerHTML = '<span class="muted" style="font-size: 0.8rem;">No genres listed.</span>';
+    } else {
+      genresContainer.innerHTML = '<span class="muted" style="font-size:0.8rem">No genres listed.</span>';
+    }
   }
 
   const chapterListContainer = modalContent.querySelector('#details-chapter-list');
   if (chapterListContainer) {
-      if (mangaData.chapters && Array.isArray(mangaData.chapters) && mangaData.chapters.length > 0) {
-          const sortedChapters = [...mangaData.chapters].sort((a, b) => {
-              const numA = parseFloat(a.chapterId);
-              const numB = parseFloat(b.chapterId);
-              if (!isNaN(numA) && !isNaN(numB)) {
-                  return numB - numA;
-              }
-              return String(b.chapterId).localeCompare(String(a.chapterId), undefined, { numeric: true, sensitivity: 'base' });
-          });
-          chapterListContainer.innerHTML = '';
-          const chapterList = document.createElement('div');
-          sortedChapters.forEach(ch => {
-              const chapterDiv = document.createElement('div');
-              chapterDiv.style.padding = '8px 0';
-              chapterDiv.style.borderBottom = '1px solid rgba(255,255,255,.05)';
-              chapterDiv.innerHTML = `
-                <span style="font-weight: 600;">Chapter ${ch.chapterId}</span>
-                <span class="muted" style="float: right; font-size: 0.85rem;">${ch.uploaded || ch.timestamp || 'N/A'}</span>
-                <br/>
-                <span class="muted" style="font-size: 0.8rem;">Views: ${ch.views || 'N/A'}</span>
-              `;
-              chapterDiv.style.cursor = 'pointer';
-              chapterDiv.onclick = () => {
-                loadChapterPages(mangaData.id, ch.chapterId);
-                const readerModal = document.getElementById('reader-modal');
-                if (readerModal) { readerModal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
-              };
-              chapterList.appendChild(chapterDiv);
-          });
-          if (chapterList.lastChild) {
-              chapterList.lastChild.style.borderBottom = 'none';
-          }
-          chapterListContainer.appendChild(chapterList);
-      } else {
-          chapterListContainer.innerHTML = '<p class="muted" style="text-align: center; margin: 10px 0;">No chapters found.</p>';
-      }
+    chapterListContainer.innerHTML = '';
+    if (mangaData.chapters && Array.isArray(mangaData.chapters) && mangaData.chapters.length > 0) {
+      const sorted = [...mangaData.chapters].sort((a,b) => {
+        const na = parseFloat(a.chapterId), nb = parseFloat(b.chapterId);
+        if (!isNaN(na) && !isNaN(nb)) return nb - na;
+        return String(b.chapterId).localeCompare(String(a.chapterId), undefined, { numeric: true });
+      });
+      sorted.forEach(ch => {
+        const div = document.createElement('div');
+        div.style.padding = '8px 0';
+        div.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+        div.style.cursor = 'pointer';
+        div.innerHTML = `<span style="font-weight:600">Chapter ${ch.chapterId}</span>
+                          <span class="muted" style="float:right;font-size:0.85rem">${ch.uploaded || ch.timestamp || 'N/A'}</span>
+                          <br/><span class="muted" style="font-size:0.8rem">Views: ${ch.views || 'N/A'}</span>`;
+        div.onclick = () => {
+          loadChapterPages(mangaData.id, ch.chapterId);
+          const readerModal = document.getElementById('reader-modal');
+          if (readerModal) { readerModal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+        };
+        chapterListContainer.appendChild(div);
+      });
+      if (chapterListContainer.lastChild) chapterListContainer.lastChild.style.borderBottom = 'none';
+    } else {
+      chapterListContainer.innerHTML = '<p class="muted" style="text-align:center;margin:10px 0">No chapters found.</p>';
+    }
   }
 
   const modal = document.getElementById('details-modal');
@@ -487,24 +474,15 @@ async function openDetailsModal(mangaId, fallbackData) {
 
 function closeDetailsModal() {
   const modal = document.getElementById('details-modal');
-  if (modal) {
-    modal.style.display = 'none';
-    document.body.style.overflow = '';
-  }
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
   currentDetailsMangaId = null;
   firstChapterIdForDetails = null;
 }
 
 function openDedicatedReaderFromDetails() {
-  if (!currentDetailsMangaId) {
-    showStatus('No manga selected for reading', true);
-    return;
-  }
-  if (!firstChapterIdForDetails) {
-    showStatus('No chapters found for this manga', true);
-    return;
-  }
-  console.log(`[app.js] Opening dedicated reader for ${currentDetailsMangaId}, chapter ${firstChapterIdForDetails}`);
+  if (!currentDetailsMangaId) return showStatus('No manga selected for reading', true);
+  if (!firstChapterIdForDetails) return showStatus('No chapters found for this manga', true);
   const basePath = window.location.pathname.includes('/docs/')
     ? window.location.origin + '/mnm-solutions/docs/'
     : window.location.origin + '/mnm-solutions/';
@@ -515,16 +493,16 @@ function openDedicatedReaderFromDetails() {
   window.location.href = url.toString();
 }
 
-/* Search UI & helpers */
+/* ---- Search + Filter integration ---- */
 function debounce(fn, wait) {
   let t;
-  return function (...args) {
+  return function(...args) {
     clearTimeout(t);
     t = setTimeout(() => fn.apply(this, args), wait);
   };
 }
 
-// New unified search+filter rendering function
+// Render results into search modal (combines empty-query listing + filters)
 async function populateSearchResultsFromFilters() {
   const box = document.getElementById('search-results');
   if (!box) return;
@@ -533,26 +511,20 @@ async function populateSearchResultsFromFilters() {
     box.innerHTML = '<p class="muted">Loading results...</p>';
     let items = [];
     if (q) {
-      // If there's text, use remote search (keeps previous behavior)
       items = await searchTitles(q);
     } else {
-      // No query: use allMangaItems (combine trending + featured)
       items = allMangaItems || [];
     }
 
-    // Apply genre filters if any
+    // Apply filters using normalized keys
     if (activeGenreFilters.size > 0) {
       items = items.filter(m => {
         if (!m.genres || !Array.isArray(m.genres)) return false;
-        const normalizedGenres = m.genres.map(g => {
-          if (!g) return '';
-          return String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-        }).filter(Boolean);
-        return normalizedGenres.some(g => activeGenreFilters.has(g));
+        const keys = m.genres.map(g => genreKeyFromName(g)).filter(Boolean);
+        return keys.some(k => activeGenreFilters.has(k));
       });
     }
 
-    // Render results
     if (!items || items.length === 0) {
       box.innerHTML = '<p class="muted">No results.</p>';
       return;
@@ -577,13 +549,10 @@ async function populateSearchResultsFromFilters() {
   }
 }
 
-// Old searchManga now delegates to populateSearchResultsFromFilters
 async function searchManga() {
   await populateSearchResultsFromFilters();
 }
-
 const searchMangaDebounced = debounce(searchManga, 420);
-
 function loadMoreSearch() { showStatus('Load more not available for search.', true); }
 
 function openSearchModal() {
@@ -592,12 +561,11 @@ function openSearchModal() {
     m.style.display = 'flex';
     setTimeout(() => {
       document.getElementById('search-input')?.focus();
-      // Populate search results immediately (empty query -> show either all or filtered)
       populateSearchResultsFromFilters();
+      updateGenreButtonStates();
     }, 100);
   }
 }
-
 function closeSearchModal() {
   const m = document.getElementById('search-modal');
   if (m) {
@@ -606,7 +574,7 @@ function closeSearchModal() {
   }
 }
 
-/* ---- Observers and pagination helpers ---- */
+/* ---- Observers / pagination ---- */
 function createObserver(targetId, callback) {
   const el = document.getElementById(targetId);
   if (!el) return;
@@ -620,21 +588,14 @@ async function loadMoreTrending() {
   window._browsePage = (window._browsePage || 1) + 1;
   try {
     const data = await apiGet(`/manga-list/${window._browsePage}`);
-    if (!data.data || !Array.isArray(data.data)) {
-      throw new Error('Invalid data format');
-    }
+    if (!data.data || !Array.isArray(data.data)) throw new Error('Invalid data format');
     const more = data.data.map(m => ({
-      id: m.id,
-      title: m.title,
-      image: proxifyUrl(m.imgUrl),
-      latestChapter: m.latestChapter,
-      description: m.description,
-      genres: m.genres || []
+      id: m.id, title: m.title, image: proxifyUrl(m.imgUrl), latestChapter: m.latestChapter, description: m.description, genres: m.genres || []
     }));
     trendingItems = trendingItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
-    // Update the global genre set and re-apply filters (note: updateAllGenresSet adds, does not clear)
-    updateAllGenresSet();
+    // update genre keys from items if needed
+    updateAllGenresFromItems();
     applyGenreFilters();
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
@@ -655,22 +616,14 @@ async function loadMoreUpdates() {
   window._updatesPage = (window._updatesPage || 1) + 1;
   try {
     const data = await apiGet(`/manga-list/${window._updatesPage}`);
-    if (!data.data || !Array.isArray(data.data)) {
-      throw new Error('Invalid data format');
-    }
+    if (!data.data || !Array.isArray(data.data)) throw new Error('Invalid data format');
     const more = data.data.map(m => ({
-      id: m.id,
-      title: m.title,
-      image: proxifyUrl(m.imgUrl),
-      latestChapter: m.latestChapter,
-      description: m.description,
-      genres: m.genres || []
+      id: m.id, title: m.title, image: proxifyUrl(m.imgUrl), latestChapter: m.latestChapter, description: m.description, genres: m.genres || []
     }));
     featuredItems = featuredItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
-    // Update global genre set after loading more updates
-    updateAllGenresSet();
-    renderUpdates(featuredItems); // Only render updates section
+    updateAllGenresFromItems();
+    renderUpdates(featuredItems);
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
       if (window._updatesPage >= totalPages) {
@@ -684,141 +637,136 @@ async function loadMoreUpdates() {
   isLoadingUpdates = false;
 }
 
-/* ---- Genre Filter Functions (modal + checklist) ---- */
-
+/* ---- Filter modal + checklist UI ---- */
 async function openFilterModal() {
   const m = document.getElementById('filter-modal');
   if (!m) return;
-  // Ensure checkboxes are populated when modal opens (uses latest allMangaItems / API genres)
   await createGenreCheckboxes();
   m.style.display = 'flex';
   setTimeout(() => {
-    const firstCb = document.querySelector('#filter-checkboxes input[type="checkbox"]');
-    if (firstCb) firstCb.focus();
-  }, 50);
+    const first = document.querySelector('#filter-checkboxes input[type="checkbox"]');
+    if (first) first.focus();
+  }, 60);
 }
-
 function closeFilterModal() {
   const m = document.getElementById('filter-modal');
-  if (m) { m.style.display = 'none'; }
+  if (m) m.style.display = 'none';
 }
-
 function toggleGenreFilters() { openFilterModal(); }
 
-// --- REPLACED: createGenreCheckboxes is now more robust in ensuring genres are available ---
+// Ensures keys and display map are populated and renders a nice two-column checklist
 async function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
+  container.innerHTML = '<p class="muted">Loading genres…</p>';
 
-  // Show loading placeholder immediately
-  container.innerHTML = '<p class="muted">Loading genres...</p>';
-
-  // --- KEY CHANGE: Ensure allGenresSet is populated reliably ---
-  // If the set is empty, prioritize fetching from the dedicated /genre API endpoint.
-  // If that fails or returns empty, fall back to extracting from the currently loaded manga items.
-  if (allGenresSet.size === 0) {
-    console.log('[app.js] createGenreCheckboxes: allGenresSet is empty, attempting to populate...');
+  // If no keys yet, attempt API then fallback to items
+  if (allGenresKeySet.size === 0) {
     try {
-      // Try loading genres from the API endpoint first
       await loadGenres();
-      console.log('[app.js] createGenreCheckboxes: loadGenres called, allGenresSet is now:', allGenresSet);
     } catch (e) {
-      console.warn('[app.js] createGenreCheckboxes: loadGenres failed, trying fallback:', e);
-      // If API call fails, fallback to extracting from items
+      console.warn('loadGenres failed inside createGenreCheckboxes', e);
+    }
+    if (allGenresKeySet.size === 0 && allMangaItems.length > 0) {
       populateGenresFromMangaItems();
     }
 
-    // If it's STILL empty after both attempts, try fallback to manga items
-    if (allGenresSet.size === 0) {
-      populateGenresFromMangaItems();
-    }
-
-    // If it's STILL empty after attempts, log and show message
-    if (allGenresSet.size === 0) {
-      console.warn('[app.js] createGenreCheckboxes: allGenresSet is still empty after API and fallback attempts.');
-      container.innerHTML = '<p class="muted">No genres available from API or loaded manga.</p>';
-      return;
+    // small wait if init is still running
+    if (allGenresKeySet.size === 0 && !initDone) {
+      await new Promise(r => setTimeout(r, 180));
+      if (allGenresKeySet.size === 0) populateGenresFromMangaItems();
     }
   }
-  // --- END KEY CHANGE ---
 
-  // Clear previous content and build the checklist
+  if (allGenresKeySet.size === 0) {
+    container.innerHTML = '<p class="muted">No genres available.</p>';
+    return;
+  }
+
+  // Build a sorted array of display names for nicer look
+  const entries = Array.from(allGenresKeySet).map(k => ({ key: k, display: genreDisplayByKey.get(k) || k }));
+  entries.sort((a,b) => a.display.localeCompare(b.display, undefined, { sensitivity: 'base' }));
+
+  // render as grid of soft cards/labels
   container.innerHTML = '';
-  const sortedGenres = Array.from(allGenresSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  sortedGenres.forEach(genre => {
-    const id = `filter_genre_${genre.replace(/[^a-z0-9]+/ig,'_').toLowerCase()}`;
+  const grid = document.createElement('div');
+  grid.className = 'filter-checkbox-grid';
+  entries.forEach(e => {
     const label = document.createElement('label');
-    label.style.display = 'flex';
-    label.style.alignItems = 'center';
-    label.style.gap = '10px';
-    label.style.padding = '6px 0';
+    label.className = 'filter-checkbox';
+    label.setAttribute('title', e.display);
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.id = id;
-    cb.value = genre;
-    if (activeGenreFilters.has(genre)) cb.checked = true;
-
-    cb.onchange = (e) => {
-      if (e.target.checked) activeGenreFilters.add(genre);
-      else activeGenreFilters.delete(genre);
+    cb.value = e.key;          // store key
+    cb.id = `filter_genre_${e.key}`;
+    if (activeGenreFilters.has(e.key)) cb.checked = true;
+    cb.onchange = evt => {
+      if (evt.target.checked) activeGenreFilters.add(e.key);
+      else activeGenreFilters.delete(e.key);
+      updateGenreButtonStates(); // update active filters UI live
     };
 
     const span = document.createElement('span');
-    span.textContent = genre;
+    span.className = 'filter-label-text';
+    span.textContent = e.display;
 
     label.appendChild(cb);
     label.appendChild(span);
-    container.appendChild(label);
+    grid.appendChild(label);
   });
+  container.appendChild(grid);
+  // show quick hint below
+  const hint = document.createElement('div');
+  hint.className = 'filter-hint muted';
+  hint.style.marginTop = '10px';
+  hint.style.fontSize = '0.9rem';
+  hint.textContent = 'Select one or more genres and click Apply to filter results.';
+  container.appendChild(hint);
 
-  console.log('[app.js] Filter checkboxes created from allGenresSet.');
+  updateGenreButtonStates();
 }
-// --- END REPLACED ---
 
+/* Update the small active filters text and sync checkboxes */
 function updateGenreButtonStates() {
+  // sync modal checkboxes
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
-  checkboxes.forEach(cb => {
-    cb.checked = activeGenreFilters.has(cb.value);
-  });
-  const activeFiltersEl = document.getElementById('active-filters');
+  checkboxes.forEach(cb => cb.checked = activeGenreFilters.has(cb.value));
+
+  // Update the active filters label in the search modal
+  const activeFiltersEl = document.getElementById('search-active-filters');
   if (activeFiltersEl) {
     if (activeGenreFilters.size > 0) {
-      activeFiltersEl.textContent = `Active filters: ${Array.from(activeGenreFilters).join(', ')}`;
+      const names = Array.from(activeGenreFilters).map(k => genreDisplayByKey.get(k) || k);
+      activeFiltersEl.textContent = `Active: ${names.join(', ')}`;
     } else {
       activeFiltersEl.textContent = '';
     }
   }
 }
 
+// apply filter for trending list (uses normalized keys)
 function applyGenreFilters() {
   if (activeGenreFilters.size === 0) {
     renderTrending(allMangaItems);
     return;
   }
-
-  const filtered = allMangaItems.filter(manga => {
-    if (!manga.genres || !Array.isArray(manga.genres)) return false;
-    const normalizedGenres = manga.genres.map(g => {
-        if (!g) return '';
-        return String(g).replace(/^genre\s*[:\-\s]*/i,'').trim();
-    }).filter(g => g);
-    return normalizedGenres.some(genre => activeGenreFilters.has(genre));
+  const filtered = allMangaItems.filter(m => {
+    if (!m.genres || !Array.isArray(m.genres)) return false;
+    const keys = m.genres.map(g => genreKeyFromName(g)).filter(Boolean);
+    return keys.some(k => activeGenreFilters.has(k));
   });
-
   renderTrending(filtered);
 }
 
+// called by Apply button in filter modal
 function applyFilterFromModal() {
   closeFilterModal();
   applyGenreFilters();
   updateGenreButtonStates();
-
-  // ALSO: if the search modal is open, update the search results view
+  // update search results if open
   const searchModal = document.getElementById('search-modal');
-  if (searchModal && (getComputedStyle(searchModal).display !== 'none')) {
-    populateSearchResultsFromFilters();
-  }
+  if (searchModal && (getComputedStyle(searchModal).display !== 'none')) populateSearchResultsFromFilters();
 }
 
 function clearFiltersFromModal() {
@@ -827,45 +775,39 @@ function clearFiltersFromModal() {
   applyGenreFilters();
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = false);
-
-  // If search modal open, refresh results (show unfiltered)
-  const searchModal = document.getElementById('search-modal');
-  if (searchModal && (getComputedStyle(searchModal).display !== 'none')) {
-    populateSearchResultsFromFilters();
-  }
+  if (getComputedStyle(document.getElementById('search-modal')).display !== 'none') populateSearchResultsFromFilters();
 }
 
-/* ---- Utility: updateAllGenresSet adds genres (does NOT clear) */
-function updateAllGenresSet() {
-  if (!allMangaItems || allMangaItems.length === 0) {
-    console.log('[app.js] updateAllGenresSet: allMangaItems empty; skipping add.');
-    return;
-  }
+/* Utility used when more items are loaded to make sure genre set includes them */
+function updateAllGenresFromItems() {
+  if (!allMangaItems || allMangaItems.length === 0) return;
   allMangaItems.forEach(item => {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
         if (!g) return;
-        const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-        if (name) allGenresSet.add(name);
+        const display = normalizeGenreName(g);
+        const key = genreKeyFromName(display);
+        if (key) {
+          allGenresKeySet.add(key);
+          if (!genreDisplayByKey.has(key)) genreDisplayByKey.set(key, display);
+        }
       });
     }
   });
-  console.log('[app.js] All genres set updated (add-only):', allGenresSet);
 }
 
 /* ---- Init ---- */
 async function init() {
   try {
-    // Start loading genres ASAP (singleton) — this will be awaited by createGenreCheckboxes if user opens modal quickly
-    loadGenres().catch(()=>{ /* non-blocking here; callers will await if needed */ });
-
-    const [t, f] = await Promise.all([getTrending(), getFeatured()]);
+    // start loading genres early
+    loadGenres().catch(()=>{});
+    const [t,f] = await Promise.all([getTrending(), getFeatured()]);
     trendingItems = Array.isArray(t) ? t : [];
     featuredItems = Array.isArray(f) ? f : [];
     allMangaItems = [...trendingItems, ...featuredItems];
 
-    // If API didn't populate genres earlier, ensure our global set includes items' genres
-    if (allGenresSet.size === 0) populateGenresFromMangaItems();
+    // if genre API didn't populate, derive from items
+    if (allGenresKeySet.size === 0) populateGenresFromMangaItems();
 
     filteredMangaItems = [...allMangaItems];
     renderTrending(allMangaItems);
@@ -883,7 +825,7 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', () => setTimeout(init, 120));
 
-/* expose functions used by inline HTML */
+/* ---- Expose to window ---- */
 window.searchManga = searchManga;
 window.searchMangaDebounced = searchMangaDebounced;
 window.openSearchModal = openSearchModal;
