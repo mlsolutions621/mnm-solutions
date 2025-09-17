@@ -132,7 +132,6 @@ async function loadGenres() {
   try {
     const data = await apiGet('/genre');
     console.log('[app.js] Genre data loaded:', data);
-    // Many APIs return an object like { genre: [...] } - handle that
     if (data && Array.isArray(data.genre)) {
       allGenresSet.clear();
       data.genre.forEach(g => {
@@ -143,10 +142,8 @@ async function loadGenres() {
       });
       console.log('[app.js] allGenresSet populated from API:', allGenresSet);
     } else if (Array.isArray(data)) {
-      // Some endpoints may return an array directly of genre objects/strings
       allGenresSet.clear();
       data.forEach(item => {
-        // item might be string or object { id, name }
         let name = null;
         if (typeof item === 'string') name = item;
         else if (item && (item.name || item.genre)) name = item.name || item.genre;
@@ -158,12 +155,10 @@ async function loadGenres() {
       console.log('[app.js] allGenresSet populated from array response:', allGenresSet);
     } else {
       console.warn('[app.js] Unexpected genre data format:', data);
-      // fallback to extracting genres from already-loaded manga items
       populateGenresFromMangaItems();
     }
   } catch (e) {
     console.warn('[app.js] Failed to load genres from API endpoint', e);
-    // fallback to extracting genres from manga items
     populateGenresFromMangaItems();
   }
 }
@@ -178,7 +173,6 @@ function populateGenresFromMangaItems() {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
         if (!g) return;
-        // sanitize same as details modal: remove leading "genre"
         const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
         if (name) allGenresSet.add(name);
       });
@@ -273,6 +267,7 @@ function renderUpdates(items) {
   });
 }
 
+// --- MODIFIED: Load all chapter pages and render them as a long strip in the popup ---
 async function loadChapterPages(mangaId, chapterId) {
   console.log(`[app.js] Loading pages for chapter ${chapterId} of manga ${mangaId} (Popup)`);
   const arr = await getChapterPages(mangaId, chapterId);
@@ -281,6 +276,7 @@ async function loadChapterPages(mangaId, chapterId) {
   updateReaderImage();
 }
 
+// --- MODIFIED: Update the reader image area in the popup to show a long strip ---
 function updateReaderImage() {
   const stage = document.querySelector('#reader-modal .reader-stage');
   if (!stage) {
@@ -523,16 +519,42 @@ function debounce(fn, wait) {
   };
 }
 
-async function searchManga() {
-  const q = document.getElementById('search-input')?.value?.trim();
+// New unified search+filter rendering function
+async function populateSearchResultsFromFilters() {
   const box = document.getElementById('search-results');
-  if (!q) { if (box) box.innerHTML = ''; return; }
+  if (!box) return;
+  const q = document.getElementById('search-input')?.value?.trim();
   try {
-    isLoadingSearch = true;
-    const items = await searchTitles(q);
-    if (!box) return;
+    box.innerHTML = '<p class="muted">Loading results...</p>';
+    let items = [];
+    if (q) {
+      // If there's text, use remote search (keeps previous behavior)
+      items = await searchTitles(q);
+    } else {
+      // No query: use allMangaItems (combine trending + featured)
+      items = allMangaItems || [];
+    }
+
+    // Apply genre filters if any
+    if (activeGenreFilters.size > 0) {
+      items = items.filter(m => {
+        if (!m.genres || !Array.isArray(m.genres)) return false;
+        const normalizedGenres = m.genres.map(g => {
+          if (!g) return '';
+          return String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
+        }).filter(Boolean);
+        return normalizedGenres.some(g => activeGenreFilters.has(g));
+      });
+    }
+
+    // Render results
+    if (!items || items.length === 0) {
+      box.innerHTML = '<p class="muted">No results.</p>';
+      return;
+    }
+
     box.innerHTML = '';
-    (items || []).forEach(m => {
+    items.forEach(m => {
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.src = m.image || '';
@@ -544,16 +566,40 @@ async function searchManga() {
       };
       box.appendChild(img);
     });
-    const loadMoreBtn = document.getElementById('search-load-more');
-    if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-  } catch (e) { console.warn('searchManga failed', e); }
-  finally { isLoadingSearch = false; }
+  } catch (e) {
+    console.warn('populateSearchResultsFromFilters failed', e);
+    box.innerHTML = '<p class="muted">Error loading results.</p>';
+  }
+}
+
+// Old searchManga now delegates to populateSearchResultsFromFilters
+async function searchManga() {
+  await populateSearchResultsFromFilters();
 }
 
 const searchMangaDebounced = debounce(searchManga, 420);
+
 function loadMoreSearch() { showStatus('Load more not available for search.', true); }
-function openSearchModal() { const m = document.getElementById('search-modal'); if (m) { m.style.display = 'flex'; setTimeout(() => document.getElementById('search-input')?.focus(), 100); } }
-function closeSearchModal() { const m = document.getElementById('search-modal'); if (m) { m.style.display = 'none'; document.getElementById('search-results').innerHTML = ''; } }
+
+function openSearchModal() {
+  const m = document.getElementById('search-modal');
+  if (m) {
+    m.style.display = 'flex';
+    setTimeout(() => {
+      document.getElementById('search-input')?.focus();
+      // Populate search results immediately (empty query -> show either all or filtered)
+      populateSearchResultsFromFilters();
+    }, 100);
+  }
+}
+
+function closeSearchModal() {
+  const m = document.getElementById('search-modal');
+  if (m) {
+    m.style.display = 'none';
+    document.getElementById('search-results').innerHTML = '';
+  }
+}
 
 function createObserver(targetId, callback) {
   const el = document.getElementById(targetId);
@@ -654,7 +700,7 @@ function closeFilterModal() {
   if (m) { m.style.display = 'none'; }
 }
 
-// --- REPLACED: createGenreCheckboxes uses allGenresSet ---
+// --- createGenreCheckboxes uses allGenresSet ---
 function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
@@ -705,7 +751,6 @@ function createGenreCheckboxes() {
   });
   console.log('[app.js] Filter checkboxes created from allGenresSet.');
 }
-// --- END REPLACED ---
 
 function updateGenreButtonStates() {
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
@@ -741,9 +786,16 @@ function applyGenreFilters() {
 }
 
 function applyFilterFromModal() {
+  // Close modal and apply filters to the main trending list
   closeFilterModal();
   applyGenreFilters();
   updateGenreButtonStates();
+
+  // ALSO: if the search modal is open, update the search results view
+  const searchModal = document.getElementById('search-modal');
+  if (searchModal && (getComputedStyle(searchModal).display !== 'none')) {
+    populateSearchResultsFromFilters();
+  }
 }
 
 function clearFiltersFromModal() {
@@ -752,6 +804,12 @@ function clearFiltersFromModal() {
   applyGenreFilters();
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = false);
+
+  // If search modal open, refresh results (show unfiltered)
+  const searchModal = document.getElementById('search-modal');
+  if (searchModal && (getComputedStyle(searchModal).display !== 'none')) {
+    populateSearchResultsFromFilters();
+  }
 }
 
 /* ---- Utility: keep global genre set up-to-date ---- */
@@ -786,8 +844,6 @@ async function init() {
     renderUpdates(featuredItems);
     createObserver('sentinel-trending', loadMoreTrending);
     createObserver('sentinel-updates', loadMoreUpdates);
-
-    // NOTE: do NOT call createGenreCheckboxes() here. Modal will populate when opened.
   } catch (e) {
     console.error('init failed', e);
     renderTrending([]);
@@ -815,3 +871,4 @@ window.openDedicatedReaderFromDetails = openDedicatedReaderFromDetails;
 window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
+window.populateSearchResultsFromFilters = populateSearchResultsFromFilters;
