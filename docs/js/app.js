@@ -24,13 +24,6 @@ const mangaDetailsCache = new Map();
 let isSearchFilterActive = false;
 let searchActiveGenreFilters = new Set();
 
-// Search pagination state
-let currentSearchQuery = '';
-let currentSearchPage = 1;
-let searchResultsCache = []; // Cache all search results
-let totalSearchPages = 1;
-const SEARCH_PAGE_SIZE = 10;
-
 // Rate limiting for API calls
 const API_RATE_LIMIT = 100; // milliseconds between calls
 let lastApiCall = 0;
@@ -477,144 +470,18 @@ function debounce(fn, wait) {
   return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), wait); };
 }
 
-// Render search results with pagination
-function renderSearchResultsWithPagination(items, currentPage, totalPages) {
-  const box = document.getElementById('search-results');
-  const pagination = document.getElementById('search-pagination');
-  
-  if (!box || !pagination) return;
-  
-  box.innerHTML = '';
-  
-  if (!items || items.length === 0) {
-    box.innerHTML = '<p class="muted">No results found.</p>';
-    pagination.innerHTML = '';
-    return;
-  }
-  
-  items.forEach(m => {
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    img.src = m.image || m.imageUrl || '';
-    img.alt = m.title || '';
-    img.title = m.title || '';
-    img.style.cursor = 'pointer';
-    img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
-    box.appendChild(img);
-  });
-  
-  // Render pagination controls
-  renderSearchPagination(currentPage, totalPages);
-}
-
-// Render search pagination controls
-function renderSearchPagination(currentPage, totalPages) {
-  const pagination = document.getElementById('search-pagination');
-  if (!pagination) return;
-  
-  pagination.innerHTML = '';
-  
-  if (totalPages <= 1) return;
-  
-  const container = document.createElement('div');
-  container.className = 'pagination-controls';
-  container.style.display = 'flex';
-  container.style.justifyContent = 'center';
-  container.style.gap = '8px';
-  container.style.marginTop = '16px';
-  container.style.padding = '16px';
-  
-  // Previous button
-  if (currentPage > 1) {
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'btn';
-    prevBtn.textContent = 'Previous';
-    prevBtn.onclick = () => goToSearchPage(currentPage - 1);
-    container.appendChild(prevBtn);
-  }
-  
-  // Page numbers (show up to 5 pages around current page)
-  const startPage = Math.max(1, currentPage - 2);
-  const endPage = Math.min(totalPages, currentPage + 2);
-  
-  for (let i = startPage; i <= endPage; i++) {
-    const pageBtn = document.createElement('button');
-    pageBtn.className = 'btn';
-    pageBtn.textContent = i;
-    pageBtn.style.minWidth = '36px';
-    if (i === currentPage) {
-      pageBtn.style.backgroundColor = '#007bff';
-      pageBtn.style.color = 'white';
-    }
-    pageBtn.onclick = () => goToSearchPage(i);
-    container.appendChild(pageBtn);
-  }
-  
-  // Next button
-  if (currentPage < totalPages) {
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'btn';
-    nextBtn.textContent = 'Next';
-    nextBtn.onclick = () => goToSearchPage(currentPage + 1);
-    container.appendChild(nextBtn);
-  }
-  
-  // Page info
-  const pageInfo = document.createElement('div');
-  pageInfo.className = 'muted';
-  pageInfo.style.marginLeft = '16px';
-  pageInfo.style.alignSelf = 'center';
-  pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-  container.appendChild(pageInfo);
-  
-  pagination.appendChild(container);
-}
-
-// Go to specific search page
-function goToSearchPage(page) {
-  currentSearchPage = page;
-  const startIndex = (page - 1) * SEARCH_PAGE_SIZE;
-  const endIndex = startIndex + SEARCH_PAGE_SIZE;
-  const pageItems = searchResultsCache.slice(startIndex, endIndex);
-  
-  renderSearchResultsWithPagination(pageItems, page, totalSearchPages);
-}
-
 // Populate search results from either API search or allMangaItems, and apply searchActiveGenreFilters if any
 async function populateSearchResultsFromFilters() {
   const box = document.getElementById('search-results');
-  const pagination = document.getElementById('search-pagination');
-  if (!box || !pagination) return;
-  
+  if (!box) return;
   const q = document.getElementById('search-input')?.value?.trim();
   try {
     box.innerHTML = '<p class="muted">Loading results…</p>';
-    pagination.innerHTML = '';
-    
     let items = [];
     if (q) {
-      // New search query - reset pagination
-      if (q !== currentSearchQuery) {
-        currentSearchQuery = q;
-        currentSearchPage = 1;
-        searchResultsCache = [];
-      }
-      
-      // If we don't have cached results for this query, fetch them
-      if (searchResultsCache.length === 0) {
-        items = await searchTitles(q);
-        searchResultsCache = items;
-        totalSearchPages = Math.ceil(searchResultsCache.length / SEARCH_PAGE_SIZE);
-      } else {
-        items = searchResultsCache;
-        totalSearchPages = Math.ceil(searchResultsCache.length / SEARCH_PAGE_SIZE);
-      }
+      items = await searchTitles(q);
     } else {
       items = [...allMangaItems]; // Use full list if no search term
-      currentSearchQuery = '';
-      searchResultsCache = [];
-      currentSearchPage = 1;
-      totalSearchPages = 1;
     }
 
     // Apply filters ONLY if search filter is active
@@ -647,8 +514,6 @@ async function populateSearchResultsFromFilters() {
           }
         }
         items = filteredItems;
-        searchResultsCache = filteredItems; // Update cache with filtered results
-        totalSearchPages = Math.ceil(searchResultsCache.length / SEARCH_PAGE_SIZE);
       } else {
         // No search query: we must ensure we check full details for items that lack inline genres
         const filteredItems = [];
@@ -691,44 +556,40 @@ async function populateSearchResultsFromFilters() {
       }
     }
 
-    // Update cache and pagination for filtered results
-    if (q && isSearchFilterActive && searchActiveGenreFilters.size > 0) {
-      searchResultsCache = items;
-      totalSearchPages = Math.ceil(searchResultsCache.length / SEARCH_PAGE_SIZE);
-    }
-
-    // Get current page items
-    const startIndex = (currentSearchPage - 1) * SEARCH_PAGE_SIZE;
-    const endIndex = startIndex + SEARCH_PAGE_SIZE;
-    const pageItems = items.slice(startIndex, endIndex);
-    
-    if (!pageItems || pageItems.length === 0) {
+    if (!items || items.length === 0) {
       box.innerHTML = '<p class="muted">No results found.</p>';
-      pagination.innerHTML = '';
       console.log('[app.js] No items after filtering');
       return;
     }
 
     console.log('[app.js] Items after filtering:', items.length);
 
-    renderSearchResultsWithPagination(pageItems, currentSearchPage, totalSearchPages);
-    
+    box.innerHTML = '';
+    items.forEach(m => {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = m.image || m.imageUrl || '';
+      img.alt = m.title || '';
+      img.title = m.title || '';
+      img.style.cursor = 'pointer';
+      img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
+      box.appendChild(img);
+    });
   } catch (e) {
     console.warn('populateSearchResultsFromFilters failed', e);
     if (box) box.innerHTML = '<p class="muted">Error loading results.</p>';
-    if (pagination) pagination.innerHTML = '';
+  } finally {
+    // Always hide load more button in search results
+    const loadBtn = document.getElementById('search-load-more');
+    if (loadBtn) loadBtn.style.display = 'none';
   }
 }
 
 // Debounced search input handler (typing)
-const performSearch = debounce(() => { 
-  currentSearchPage = 1; // Reset to first page on new search
-  populateSearchResultsFromFilters(); 
-}, 420);
+const performSearch = debounce(() => { populateSearchResultsFromFilters(); }, 420);
 
 // Main function used by search input's oninput (keeps compatibility)
 async function searchManga() {
-  currentSearchPage = 1; // Reset to first page on new search
   await populateSearchResultsFromFilters();
 }
 
@@ -742,7 +603,6 @@ function openSearchModal() {
       const input = document.getElementById('search-input');
       if (input) input.focus();
       // populate results (empty query => shows all or filtered)
-      currentSearchPage = 1; // Reset to first page
       populateSearchResultsFromFilters();
       // Update filter modal checkboxes to reflect current search filters
       updateGenreButtonStates();
@@ -756,19 +616,12 @@ function closeSearchModal() {
     m.style.display = 'none';
     document.body.style.overflow = ''; // Restore background scroll
     const box = document.getElementById('search-results');
-    const pagination = document.getElementById('search-pagination');
     if (box) box.innerHTML = '';
-    if (pagination) pagination.innerHTML = '';
     const input = document.getElementById('search-input');
     if (input) input.value = '';
     // Reset search filter state when closing
     isSearchFilterActive = false;
     searchActiveGenreFilters.clear();
-    // Reset search pagination state
-    currentSearchQuery = '';
-    currentSearchPage = 1;
-    searchResultsCache = [];
-    totalSearchPages = 1;
   }
 }
 
@@ -1037,7 +890,6 @@ function applyFilterFromModal() {
     console.log('[app.js] Filter applied while search modal open — refreshing search results.');
     console.log('[app.js] Current search filters:', Array.from(searchActiveGenreFilters));
     isSearchFilterActive = searchActiveGenreFilters.size > 0;
-    currentSearchPage = 1; // Reset to first page when applying filters
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, apply filters to the main trending view
@@ -1055,7 +907,6 @@ function clearFiltersFromModal() {
     console.log('[app.js] Filters cleared while search modal open — refreshing search results.');
     searchActiveGenreFilters.clear();
     isSearchFilterActive = false;
-    currentSearchPage = 1; // Reset to first page
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, clear main filters and reset trending view
@@ -1097,12 +948,6 @@ async function init() {
     renderUpdates(featuredItems);
     createObserver('sentinel-trending', loadMoreTrending);
     createObserver('sentinel-updates', loadMoreUpdates);
-    
-    // Add event listener for search input
-    const searchInput = document.getElementById('search-input');
-    if (searchInput) {
-      searchInput.addEventListener('input', performSearch);
-    }
   } catch (e) {
     console.error('init failed', e);
     renderTrending([]);
@@ -1134,4 +979,3 @@ window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
 window.closeReader = closeReader;
-window.goToSearchPage = goToSearchPage; // Expose pagination function
