@@ -472,10 +472,9 @@ async function populateSearchResultsFromFilters() {
     // Apply filters ONLY if search filter is active
     if (isSearchFilterActive && searchActiveGenreFilters.size > 0) {
       console.log('[app.js] Applying search modal genre filters:', Array.from(searchActiveGenreFilters));
-      
-      // For search results, we need to fetch full manga details to get genres
+
+      // If there is a search query: keep existing behavior (fetch full details for each search result)
       if (q) {
-        // Filter search results by fetching full details
         const filteredItems = [];
         for (const item of items) {
           try {
@@ -485,46 +484,67 @@ async function populateSearchResultsFromFilters() {
               const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
               if (matches) {
                 console.log('[app.js] Match found for', fullDetails.title, 'with genres:', mangaGenreKeys);
+                // Use fullDetails so we can show proper genres/images/etc
                 filteredItems.push(fullDetails);
               }
             }
           } catch (e) {
             console.warn('Failed to get details for', item.id, e);
-            // Still include the item if we can't get details
+            // fallback to list item if it has genres
             if (item.genres && Array.isArray(item.genres)) {
               const mangaGenreKeys = item.genres.map(genreKeyFromName).filter(Boolean);
               const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-              if (matches) {
-                filteredItems.push(item);
-              }
+              if (matches) filteredItems.push(item);
             }
           }
         }
         items = filteredItems;
       } else {
-        // For non-search results (trending/featured), use existing genres
-        items = items.filter(m => {
-          if (!m.genres || !Array.isArray(m.genres)) {
-            console.log('[app.js] No genres for', m.title);
-            return false;
+        // No search query: we must ensure we check full details for items that lack inline genres
+        const filteredItems = [];
+        // iterate sequentially to avoid overwhelming API & to make use of cached details
+        for (const item of items) {
+          let mangaGenres = Array.isArray(item.genres) && item.genres.length ? item.genres : null;
+          if (!mangaGenres) {
+            try {
+              const fullDetails = await getCachedMangaDetails(item.id);
+              if (fullDetails && Array.isArray(fullDetails.genres) && fullDetails.genres.length) {
+                mangaGenres = fullDetails.genres;
+                // use fullDetails for display if it matches
+                const mangaGenreKeys = mangaGenres.map(genreKeyFromName).filter(Boolean);
+                const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+                if (matches) {
+                  console.log('[app.js] Match found for (details) ', fullDetails.title, 'with genres:', mangaGenreKeys);
+                  filteredItems.push(fullDetails);
+                  continue; // matched, next item
+                } else {
+                  continue; // not matched, next item
+                }
+              } else {
+                mangaGenres = [];
+              }
+            } catch (e) {
+              console.warn('Failed to load details for', item.id, e);
+              mangaGenres = [];
+            }
           }
-          // Normalize all manga genres to lowercase keys for comparison
-          const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
-          console.log('[app.js] Manga genres for', m.title, ':', mangaGenreKeys);
-          // Check if any of the manga's genre keys match active filters
+          // if we have inline genres, check them
+          const mangaGenreKeys = (mangaGenres || item.genres || []).map(genreKeyFromName).filter(Boolean);
+          console.log('[app.js] Manga genres for', item.title, ':', mangaGenreKeys);
           const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
           if (matches) {
-            console.log('[app.js] Match found for', m.title, 'with genres:', mangaGenreKeys);
+            console.log('[app.js] Match found for', item.title, 'with genres:', mangaGenreKeys);
+            filteredItems.push(item);
           }
-          return matches;
-        });
+        }
+        items = filteredItems;
       }
     }
 
-    if (!items || items.length === 0) { 
-      box.innerHTML = '<p class="muted">No results found.</p>'; 
+    if (!items || items.length === 0) {
+      box.innerHTML = '<p class="muted">No results found.</p>';
       console.log('[app.js] No items after filtering');
-      return; 
+      return;
     }
 
     console.log('[app.js] Items after filtering:', items.length);
@@ -533,7 +553,7 @@ async function populateSearchResultsFromFilters() {
     items.forEach(m => {
       const img = document.createElement('img');
       img.loading = 'lazy';
-      img.src = m.image || '';
+      img.src = m.image || m.imageUrl || '';
       img.alt = m.title || '';
       img.title = m.title || '';
       img.style.cursor = 'pointer';
