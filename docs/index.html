@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <script>
+    // your proxy override (no extra spaces)
     window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
   </script>
   <script defer src="js/app.js"></script>
@@ -33,7 +34,8 @@
       <div class="hero-actions">
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <div class="hero-actions-right">
-            <button class="btn btn-ghost" onclick="openSearchModal()">Search Manga</button>
+          <button class="btn btn-ghost" onclick="openSearchModal()">Search</button>
+          <!-- removed external filter button per request -->
         </div>
       </div>
     </div>
@@ -49,7 +51,7 @@
       <div class="container load-more-row">
         <button class="btn" id="load-more" onclick="loadMoreTrending()">Load More</button>
       </div>
-      <div id="sentinel-trending" style="height: 1px;"></div>
+      <div id="sentinel-trending" style="height:1px;"></div>
     </section>
 
     <section class="section" id="updates-section">
@@ -61,37 +63,34 @@
       <div class="container load-more-row">
         <button class="btn btn-ghost" id="load-more-updates" onclick="loadMoreUpdates()">Load More</button>
       </div>
-      <div id="sentinel-updates" style="height: 1px;"></div>
+      <div id="sentinel-updates" style="height:1px;"></div>
     </section>
   </main>
 
-  <!-- Search modal -->
+  <!-- Search modal: contains search input + filter button (filter only inside search modal) -->
   <div class="search-modal" id="search-modal" aria-hidden="true">
     <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
     <div class="search-box">
-      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" />
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px; align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="text" id="search-input" placeholder="Search for manga..." oninput="performSearch()" />
         <button class="btn btn-ghost" onclick="openFilterModal()">Filter</button>
-        <span id="search-active-filters" class="muted" style="margin-left:8px;"></span>
+        <div id="search-active-filters" style="margin-left:10px;color:var(--muted);font-size:0.95rem;"></div>
       </div>
 
       <div class="results" id="search-results"></div>
-
-      <div class="load-more-row">
-        <button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button>
-      </div>
+      <!-- removed search-load-more button (hidden by JS if present) -->
     </div>
   </div>
 
-  <!-- Filter modal (only accessible from Search modal) -->
+  <!-- Filter modal: used by the Search modal's Filter button -->
   <div class="filter-modal" id="filter-modal" aria-hidden="true" style="display:none;">
     <button class="close" onclick="closeFilterModal()" aria-label="Close">×</button>
-    <div class="search-box" style="max-width:720px; width:96%;">
+    <div class="search-box" style="width:min(760px,96%);">
       <h3 style="margin-bottom:10px;">Filter</h3>
       <div id="filter-checkboxes" style="max-height:320px; overflow:auto; margin-bottom:12px; padding-right:6px;">
-         <p class="muted">Loading genres...</p>
+        <p class="muted">Loading genres...</p>
       </div>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
         <button class="btn btn-ghost" onclick="clearFiltersFromModal()">Clear</button>
         <button class="btn" onclick="applyFilterFromModal()">Apply</button>
       </div>
@@ -137,5 +136,6 @@
       </div>
     </div>
   </footer>
+
 </body>
 </html>
