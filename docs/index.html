@@ -29,7 +29,6 @@
       <nav class="menu" aria-label="Main menu">
         <a href="#trending-section">Trending</a>
         <a href="#updates-section">Updates</a>
-        <!-- Intentionally left minimal — search & filter are placed in hero area -->
       </nav>
     </div>
   </header>
@@ -47,7 +46,13 @@
           <button class="btn btn-ghost" onclick="toggleGenreFilters()" aria-haspopup="dialog">Filter</button>
         </div>
       </div>
+
+      <!-- Active filters display -->
+      <div style="margin-top:10px;">
+        <span id="active-filters" class="muted" aria-live="polite"></span>
+      </div>
     </div>
+
     <div class="hero-gradient"></div>
   </section>
 
@@ -101,9 +106,12 @@
     <button class="close" onclick="closeFilterModal()" aria-label="Close filter dialog">×</button>
     <div class="search-box" role="document">
       <h3 style="margin-bottom:10px;">Filter</h3>
+
+      <!-- Checkbox container: filled by JS when modal opens -->
       <div id="filter-checkboxes" style="max-height:320px; overflow:auto; margin-bottom:12px; padding-right:6px;">
-         <p class="muted">Loading genres...</p> <!-- Temporary loading text -->
+         <p class="muted">Loading genres...</p>
       </div>
+
       <div style="display:flex; gap:8px; justify-content:flex-end;">
         <button class="btn btn-ghost" onclick="clearFiltersFromModal()" aria-label="Clear filters">Clear</button>
         <button class="btn" onclick="applyFilterFromModal()" aria-label="Apply filters">Apply</button>
@@ -139,7 +147,7 @@
     </div>
   </div>
 
-  <!-- Details Modal (content injected by js) -->
+  <!-- Details Modal (content injected by JS) -->
   <div class="modal" id="details-modal" aria-hidden="true" role="dialog" aria-label="Manga details">
     <div class="modal-content"></div>
   </div>
