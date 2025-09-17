@@ -59,6 +59,7 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .card .meta{padding:10px}
 .card .title{font-weight:700;font-size:.98rem}
 
+/* Search modal */
 .search-modal{position:fixed;inset:0;background:rgba(6,6,8,.94);display:none;align-items:flex-start;justify-content:center;padding:44px 14px;z-index:90}
 .search-modal .close{position:absolute;top:16px;right:20px;background:transparent;border:none;color:#fff;font-size:26px;cursor:pointer;z-index:999}
 .search-box{width:min(900px,96%);margin:0 auto}
@@ -110,4 +111,46 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
   .card img{height:160px}
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions-right { justify-content: center; }
+}
+
+/* ---- Additions to support modal scrolling & internal scroll regions ---- */
+
+/* Prevent background scrolling when any modal is open */
+body.modal-open {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+/* Ensure search modal itself doesn't cause double-scroll and aligns to top */
+.search-modal {
+  align-items: flex-start; /* keep header near top */
+  overflow: hidden;       /* prevent body-like scrolling inside modal */
+}
+
+/* Make search results scrollable inside the modal */
+.search-box .results {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+
+  /* new: limit height and allow scrolling */
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 8px; /* spacing for scrollbar */
+}
+
+/* Slight niceties for filter modal to avoid leaking scroll to body */
+.filter-modal {
+  align-items: center;
+  overflow: hidden;
+}
+.filter-modal .search-box {
+  max-height: 84vh;
+  overflow: hidden;
+}
+.filter-modal #filter-checkboxes {
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 8px;
 }
