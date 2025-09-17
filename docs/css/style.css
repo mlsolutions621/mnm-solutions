@@ -6,7 +6,6 @@ html,body{height:100%}
 body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radial-gradient(1200px 600px at 80% -10%,rgba(159,120,255,.12),transparent),radial-gradient(1400px 700px at 10% -20%,rgba(255,119,183,.10),transparent),var(--bg);color:var(--ink);line-height:1.5}
 .container{max-width:var(--max);margin:0 auto;padding:0 18px}
 
-/* Header */
 .site-header{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(0,0,0,.02));backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.04)}
 .nav{display:flex;align-items:center;justify-content:space-between;height:64px}
 .brand{font-weight:800;text-decoration:none;color:#fff;font-size:1.3rem}
@@ -16,7 +15,6 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .menu a:hover,.search-button:hover{background:rgba(255,255,255,.06)}
 .search-button{background:transparent;border:1px solid rgba(255,255,255,.06);cursor:pointer}
 
-/* Hero */
 .hero{position:relative;padding:68px 0 42px}
 .hero-inner{position:relative}
 .hero h1{font-size:clamp(1.8rem,4vw,3rem);letter-spacing:-.5px}
@@ -30,30 +28,23 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .btn.small{padding:8px 10px;border-radius:10px}
 .hero-gradient{position:absolute;inset:0;background:radial-gradient(800px 400px at 60% -10%,rgba(159,120,255,.15),transparent),radial-gradient(600px 300px at 10% -10%,rgba(255,119,183,.12),transparent);pointer-events:none}
 
-/* Sections */
 .section{padding:22px 0}
 .section-header{display:flex;align-items:baseline;gap:10px}
 .section-header h2{font-size:1.1rem}
 .muted{color:var(--muted)}
 
-/* Center Load More Buttons */
 .load-more-row{text-align:center; margin-top:10px; margin-bottom: 10px;}
 .load-more-row .btn { display: inline-block; margin: 0 auto; }
 
-/* Filter modal (improvements) */
+/* Filter modal */
 .filter-modal{position:fixed;inset:0;background:rgba(6,6,8,.92);display:none;align-items:center;justify-content:center;padding:44px 14px;z-index:95}
 .filter-modal .close{position:absolute;top:20px;right:26px;background:transparent;border:none;color:#fff;font-size:26px;cursor:pointer;z-index:999}
-
-/* New checklist grid + item styles (aesthetic) */
-.filter-checkbox-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
-.filter-checkbox{
-  display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
-  border:1px solid rgba(255,255,255,.04);cursor:pointer;transition:transform .12s, box-shadow .12s;
-}
-.filter-checkbox input[type="checkbox"]{width:18px;height:18px;flex:0 0 auto;cursor:pointer}
-.filter-checkbox .filter-label-text{font-weight:600;color:var(--muted);font-size:0.95rem}
-.filter-checkbox:hover{transform:translateY(-3px);box-shadow:0 8px 18px rgba(0,0,0,.5)}
-.filter-hint{opacity:0.85}
+#filter-checkboxes{padding:0 6px 0 0;margin-bottom:12px}
+.filter-checkbox-grid{display:flex;flex-direction:column;gap:6px}
+.filter-checkbox{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background-color .15s}
+.filter-checkbox:hover{background:rgba(255,255,255,0.03)}
+.filter-checkbox input[type="checkbox"]{width:18px;height:18px;accent-color:var(--accent);border-radius:4px}
+.filter-label-text{font-size:0.95rem;color:var(--ink)}
 
 /* Scroller */
 .scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 0}
@@ -62,18 +53,16 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .scroller img{width:160px;border-radius:12px;box-shadow:var(--shadow);cursor:pointer;transition:transform .18s;object-fit:cover;height:240px}
 .scroller img:hover{transform:translateY(-6px) scale(1.02)}
 
-/* Grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.04);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
 .card img{width:100%;display:block;object-fit:cover;height:220px}
 .card .meta{padding:10px}
 .card .title{font-weight:700;font-size:.98rem}
 
-/* Search modal */
 .search-modal{position:fixed;inset:0;background:rgba(6,6,8,.94);display:none;align-items:flex-start;justify-content:center;padding:44px 14px;z-index:90}
 .search-modal .close{position:absolute;top:16px;right:20px;background:transparent;border:none;color:#fff;font-size:26px;cursor:pointer;z-index:999}
 .search-box{width:min(900px,96%);margin:0 auto}
-.search-box input{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff}
+.search-box input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff}
 .search-box .results{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
 .search-box img{width:100%;border-radius:10px;cursor:pointer;object-fit:cover;height:220px}
 
@@ -109,19 +98,16 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
   padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);font-size:0.85rem;color:var(--muted)
 }
 
-/* Footer */
 .site-footer{margin-top:24px;border-top:1px solid rgba(255,255,255,.05);padding:16px 0;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
 .footer-inner{display:flex;align-items:center;justify-content:space-between}
 .footer-inner .links{display:flex;gap:12px}
 .footer-inner a{color:var(--muted);text-decoration:none}
 
-/* Responsive tweaks */
-@media (max-width: 760px){
+@media (max-width:760px){
   .reader-head{flex-direction:column;align-items:stretch}
   .reader-controls{justify-content:flex-start;flex-wrap:wrap}
   .scroller img, .search-box img{height:180px}
   .card img{height:160px}
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions-right { justify-content: center; }
-  .filter-checkbox-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 }
