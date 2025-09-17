@@ -1097,6 +1097,12 @@ async function init() {
     renderUpdates(featuredItems);
     createObserver('sentinel-trending', loadMoreTrending);
     createObserver('sentinel-updates', loadMoreUpdates);
+    
+    // Add event listener for search input
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', performSearch);
+    }
   } catch (e) {
     console.error('init failed', e);
     renderTrending([]);
