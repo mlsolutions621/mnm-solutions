@@ -40,15 +40,17 @@ body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radi
 .load-more-row{text-align:center; margin-top:10px; margin-bottom: 10px;}
 .load-more-row .btn { display: inline-block; margin: 0 auto; }
 
-/* Filter modal improvements */
+/* Filter modal (improvements) */
 .filter-modal{position:fixed;inset:0;background:rgba(6,6,8,.92);display:none;align-items:center;justify-content:center;padding:44px 14px;z-index:95}
 .filter-modal .close{position:absolute;top:20px;right:26px;background:transparent;border:none;color:#fff;font-size:26px;cursor:pointer;z-index:999}
+
+/* New checklist grid + item styles (aesthetic) */
 .filter-checkbox-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
 .filter-checkbox{
   display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
   border:1px solid rgba(255,255,255,.04);cursor:pointer;transition:transform .12s, box-shadow .12s;
 }
-.filter-checkbox input[type="checkbox"]{width:18px;height:18px;flex:0 0 auto}
+.filter-checkbox input[type="checkbox"]{width:18px;height:18px;flex:0 0 auto;cursor:pointer}
 .filter-checkbox .filter-label-text{font-weight:600;color:var(--muted);font-size:0.95rem}
 .filter-checkbox:hover{transform:translateY(-3px);box-shadow:0 8px 18px rgba(0,0,0,.5)}
 .filter-hint{opacity:0.85}
