@@ -17,6 +17,9 @@ let genreDisplayByKey = new Map();  // key -> display name
 let genresLoadingPromise = null;
 let initDone = false;
 
+// Cache for manga details to avoid repeated API calls
+const mangaDetailsCache = new Map();
+
 // State for search modal to manage its own filters
 let isSearchFilterActive = false;
 let searchActiveGenreFilters = new Set();
@@ -103,33 +106,58 @@ async function getFeatured() {
   }
 }
 
+// Cache manga details to avoid repeated API calls
+async function getCachedMangaDetails(mangaId) {
+  if (mangaDetailsCache.has(mangaId)) {
+    return mangaDetailsCache.get(mangaId);
+  }
+  
+  try {
+    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
+    const mangaDetails = {
+      id: data.id,
+      title: data.title,
+      image: proxifyUrl(data.imageUrl),
+      author: data.author,
+      status: data.status,
+      lastUpdated: data.lastUpdated,
+      views: data.views,
+      genres: data.genres || [],
+      rating: data.rating,
+      description: data.description,
+      summary: data.summary,
+      chapters: data.chapters && Array.isArray(data.chapters) ? data.chapters.map(ch => ({
+        chapterId: ch.chapterId, views: ch.views, uploaded: ch.uploaded, timestamp: ch.timestamp
+      })) : []
+    };
+    
+    mangaDetailsCache.set(mangaId, mangaDetails);
+    return mangaDetails;
+  } catch (e) {
+    console.warn('getCachedMangaDetails failed for', mangaId, e);
+    return null;
+  }
+}
+
 async function searchTitles(q) {
   if (!q) return [];
   try {
     const searchQuery = encodeURIComponent(q.replace(/\s+/g, '_'));
     const data = await apiGet(`/search/${searchQuery}`);
     if (!data.manga || !Array.isArray(data.manga)) return [];
-    return data.manga.map(m => {
-      // Handle different API response structures for genres
-      let genres = [];
-      if (m.genres && Array.isArray(m.genres)) {
-        genres = m.genres;
-      } else if (m.genre && Array.isArray(m.genre)) {
-        genres = m.genre;
-      } else if (m.genre) {
-        genres = [m.genre];
-      }
-      
-      return {
-        id: m.id, 
-        title: m.title, 
-        image: proxifyUrl(m.imgUrl || m.image),
-        latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
-        authors: m.authors, 
-        views: m.views, 
-        genres: genres
-      };
-    });
+    
+    // Convert search results to the same format as other manga items
+    const searchResults = data.manga.map(m => ({
+      id: m.id, 
+      title: m.title, 
+      image: proxifyUrl(m.imgUrl || m.image),
+      latestChapter: m.latestChapters && m.latestChapters[0] ? m.latestChapters[0].chapter : null,
+      authors: m.authors, 
+      views: m.views, 
+      genres: m.genres || [] // This might be empty, but we'll handle it in filtering
+    }));
+    
+    return searchResults;
   } catch (e) {
     console.warn('searchTitles failed', e);
     return [];
@@ -206,17 +234,9 @@ function populateGenresFromMangaItems() {
 async function getInfo(mangaId) {
   if (!mangaId) return null;
   try {
-    const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
-    if (!data.id) throw new Error('Manga not found');
-    const genreNames = (data.genres || []).map(id => genreMap[id] || `Genre ${id}`).filter(Boolean);
-    return {
-      id: data.id, title: data.title, image: proxifyUrl(data.imageUrl), author: data.author,
-      status: data.status, lastUpdated: data.lastUpdated, views: data.views, genres: genreNames,
-      rating: data.rating, description: data.description, summary: data.summary,
-      chapters: data.chapters && Array.isArray(data.chapters) ? data.chapters.map(ch => ({
-        chapterId: ch.chapterId, views: ch.views, uploaded: ch.uploaded, timestamp: ch.timestamp
-      })) : []
-    };
+    const data = await getCachedMangaDetails(mangaId);
+    if (!data || !data.id) throw new Error('Manga not found');
+    return data;
   } catch (e) {
     console.warn('getInfo failed', e);
     return null;
@@ -443,27 +463,62 @@ async function populateSearchResultsFromFilters() {
   try {
     box.innerHTML = '<p class="muted">Loading results…</p>';
     let items = [];
-    if (q) items = await searchTitles(q);
-    else items = [...allMangaItems]; // Use full list if no search term
+    if (q) {
+      items = await searchTitles(q);
+    } else {
+      items = [...allMangaItems]; // Use full list if no search term
+    }
 
     // Apply filters ONLY if search filter is active
     if (isSearchFilterActive && searchActiveGenreFilters.size > 0) {
       console.log('[app.js] Applying search modal genre filters:', Array.from(searchActiveGenreFilters));
-      items = items.filter(m => {
-        if (!m.genres || !Array.isArray(m.genres)) {
-          console.log('[app.js] No genres for', m.title);
-          return false;
+      
+      // For search results, we need to fetch full manga details to get genres
+      if (q) {
+        // Filter search results by fetching full details
+        const filteredItems = [];
+        for (const item of items) {
+          try {
+            const fullDetails = await getCachedMangaDetails(item.id);
+            if (fullDetails && fullDetails.genres && Array.isArray(fullDetails.genres)) {
+              const mangaGenreKeys = fullDetails.genres.map(genreKeyFromName).filter(Boolean);
+              const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+              if (matches) {
+                console.log('[app.js] Match found for', fullDetails.title, 'with genres:', mangaGenreKeys);
+                filteredItems.push(fullDetails);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to get details for', item.id, e);
+            // Still include the item if we can't get details
+            if (item.genres && Array.isArray(item.genres)) {
+              const mangaGenreKeys = item.genres.map(genreKeyFromName).filter(Boolean);
+              const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+              if (matches) {
+                filteredItems.push(item);
+              }
+            }
+          }
         }
-        // Normalize all manga genres to lowercase keys for comparison
-        const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
-        console.log('[app.js] Manga genres for', m.title, ':', mangaGenreKeys);
-        // Check if any of the manga's genre keys match active filters
-        const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-        if (matches) {
-          console.log('[app.js] Match found for', m.title, 'with genres:', mangaGenreKeys);
-        }
-        return matches;
-      });
+        items = filteredItems;
+      } else {
+        // For non-search results (trending/featured), use existing genres
+        items = items.filter(m => {
+          if (!m.genres || !Array.isArray(m.genres)) {
+            console.log('[app.js] No genres for', m.title);
+            return false;
+          }
+          // Normalize all manga genres to lowercase keys for comparison
+          const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
+          console.log('[app.js] Manga genres for', m.title, ':', mangaGenreKeys);
+          // Check if any of the manga's genre keys match active filters
+          const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
+          if (matches) {
+            console.log('[app.js] Match found for', m.title, 'with genres:', mangaGenreKeys);
+          }
+          return matches;
+        });
+      }
     }
 
     if (!items || items.length === 0) { 
