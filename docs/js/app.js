@@ -484,8 +484,8 @@ async function populateSearchResultsFromFilters() {
       items = [...allMangaItems];
     }
 
-    // apply filters only when isSearchFilterActive is true and there are active filters
-    if (isSearchFilterActive && activeGenreFilters.size > 0) {
+    // apply filters only when activeGenreFilters has entries
+    if (activeGenreFilters.size > 0) {
       items = items.filter(m => {
         if (!m.genres || !Array.isArray(m.genres)) return false;
         const keys = m.genres.map(g => genreKeyFromName(g)).filter(Boolean);
@@ -517,15 +517,63 @@ async function populateSearchResultsFromFilters() {
 
 // performSearch: used by input debounced handler (typing)
 async function performSearch() {
-  // when user types, we want to show search results and keep applying search-modal filters only if isSearchFilterActive
   await populateSearchResultsFromFilters();
 }
 const searchMangaDebounced = debounce(performSearch, 420);
 
-// For API compatibility: searchManga triggers the unified results (used elsewhere)
+/* ---- REPLACED searchManga: now applies activeGenreFilters to search results ---- */
 async function searchManga() {
-  await populateSearchResultsFromFilters();
+  const q = document.getElementById('search-input')?.value?.trim();
+  const box = document.getElementById('search-results');
+  if (!box) return;
+  try {
+    isLoadingSearch = true;
+    let items = [];
+    if (q) {
+      items = await searchTitles(q);
+    } else {
+      // If no search query, show all items in the search context
+      items = [...allMangaItems];
+    }
+
+    // Apply active genre filters to search results if present
+    if (activeGenreFilters.size > 0) {
+      console.log('[app.js] Applying active genre filters to search results:', activeGenreFilters);
+      items = items.filter(manga => {
+        if (!manga.genres || !Array.isArray(manga.genres)) return false;
+        const keys = manga.genres.map(g => genreKeyFromName(g)).filter(Boolean);
+        return keys.some(k => activeGenreFilters.has(k));
+      });
+    }
+
+    box.innerHTML = '';
+    if (!items || items.length === 0) {
+      box.innerHTML = '<p class="muted">No results found.</p>';
+      return;
+    }
+    (items || []).forEach(m => {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = m.image || '';
+      img.alt = m.title || '';
+      img.title = m.title || '';
+      img.onclick = () => {
+        closeSearchModal();
+        openDetailsModal(m.id, m);
+      };
+      box.appendChild(img);
+    });
+    const loadMoreBtn = document.getElementById('search-load-more');
+    if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+  } catch (e) {
+    console.warn('searchManga failed', e);
+    if(box) box.innerHTML = '<p class="muted">Error loading results.</p>';
+  } finally {
+    isLoadingSearch = false;
+  }
 }
+/* ---- END REPLACED searchManga ---- */
+
 function loadMoreSearch() { showStatus('Load more not available for search.', true); }
 
 function openSearchModal() {
@@ -538,9 +586,7 @@ function openSearchModal() {
     isSearchFilterActive = activeGenreFilters.size > 0;
     setTimeout(() => {
       const input = document.getElementById('search-input');
-      if (input) {
-        input.focus();
-      }
+      if (input) input.focus();
       // populate initial results (empty query => all or filtered)
       populateSearchResultsFromFilters();
       updateGenreButtonStates();
@@ -555,7 +601,6 @@ function closeSearchModal() {
     document.body.style.overflow = '';
     const box = document.getElementById('search-results');
     if (box) box.innerHTML = '';
-    // reset search-filter mode (we consider search-filter active only while search modal is open & user applied filters)
     isSearchFilterActive = false;
   }
 }
@@ -579,7 +624,6 @@ async function loadMoreTrending() {
     trendingItems = trendingItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
     updateAllGenresFromItems();
-    // Only apply main filters if not in search-filter mode
     if (!isSearchFilterActive) applyGenreFilters();
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
@@ -731,44 +775,44 @@ function applyGenreFilters() {
   renderTrending(filtered);
 }
 
-// applyFilterFromModal: decide whether to be search-only or main
+/* ---- REPLACED applyFilterFromModal: refresh search results if search open ---- */
 function applyFilterFromModal() {
   closeFilterModal();
   const searchModal = document.getElementById('search-modal');
-  const isSearchOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
+  const isSearchModalOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
 
-  if (isSearchOpen) {
-    // Apply filter to search results only
+  if (isSearchModalOpen) {
+    console.log('[app.js] Filter applied while search modal is open. Refreshing search results.');
+    // ensure we mark search-filter mode if filters exist
     isSearchFilterActive = activeGenreFilters.size > 0;
-    populateSearchResultsFromFilters();
+    searchManga(); // will apply activeGenreFilters
   } else {
-    // Apply filter to main trending view
-    isSearchFilterActive = false;
+    console.log('[app.js] Filter applied. Applying to main trending view.');
     applyGenreFilters();
   }
-  updateGenreButtonStates();
 }
+/* ---- END REPLACED applyFilterFromModal ---- */
 
-// clear filter from modal
+/* ---- REPLACED clearFiltersFromModal: refresh search results if search open ---- */
 function clearFiltersFromModal() {
   activeGenreFilters.clear();
   updateGenreButtonStates();
+  applyGenreFilters(); // Always apply to main view when clearing
+  // Uncheck UI checkboxes
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = false);
 
   const searchModal = document.getElementById('search-modal');
-  const isSearchOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
+  const isSearchModalOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
 
-  if (isSearchOpen) {
+  if (isSearchModalOpen) {
+    console.log('[app.js] Filters cleared while search modal is open. Refreshing search results.');
     isSearchFilterActive = false;
-    populateSearchResultsFromFilters();
-  } else {
-    isSearchFilterActive = false;
-    renderTrending(allMangaItems);
+    searchManga(); // Show unfiltered results in search modal
   }
 }
+/* ---- END REPLACED clearFiltersFromModal ---- */
 
-/* Utility: incorporate new items' genres */
 function updateAllGenresFromItems() {
   if (!allMangaItems || allMangaItems.length === 0) return;
   allMangaItems.forEach(item => {
@@ -786,7 +830,6 @@ function updateAllGenresFromItems() {
   });
 }
 
-/* ---- Init ---- */
 async function init() {
   try {
     loadGenres().catch(()=>{});
