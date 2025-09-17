@@ -35,7 +35,6 @@
         <button class="btn" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">Browse Trending</button>
         <div class="hero-actions-right">
           <button class="btn btn-ghost" onclick="openSearchModal()">Search</button>
-          <!-- removed external filter button per request -->
         </div>
       </div>
     </div>
@@ -68,7 +67,7 @@
   </main>
 
   <!-- Search modal: contains search input + filter button (filter only inside search modal) -->
-  <div class="search-modal" id="search-modal" aria-hidden="true">
+  <div class="search-modal" id="search-modal" aria-hidden="true" style="display:none;">
     <button class="close" onclick="closeSearchModal()" aria-label="Close">×</button>
     <div class="search-box">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
@@ -78,7 +77,7 @@
       </div>
 
       <div class="results" id="search-results"></div>
-      <!-- removed search-load-more button (hidden by JS if present) -->
+      <!-- search-load-more intentionally omitted (hidden by JS if present) -->
     </div>
   </div>
 
@@ -98,7 +97,7 @@
   </div>
 
   <!-- Reader modal -->
-  <div class="modal" id="reader-modal" aria-hidden="true">
+  <div class="modal" id="reader-modal" aria-hidden="true" style="display:none;">
     <div class="modal-content">
       <button class="close" onclick="closeReader()" aria-label="Close">×</button>
       <div class="reader-head">
@@ -123,7 +122,7 @@
   </div>
 
   <!-- Details modal -->
-  <div class="modal" id="details-modal" aria-hidden="true">
+  <div class="modal" id="details-modal" aria-hidden="true" style="display:none;">
     <div class="modal-content"></div>
   </div>
 
