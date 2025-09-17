@@ -374,7 +374,7 @@ async function openDetailsModal(mangaId, fallbackData) {
         div.onclick = () => {
           loadChapterPages(mangaData.id, ch.chapterId);
           const readerModal = document.getElementById('reader-modal');
-          if (readerModal) { readerModal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+          if (readerModal) { readerModal.style.display = 'flex'; document.body.classList.add('modal-open'); }
         };
         cl.appendChild(div);
       });
@@ -385,13 +385,13 @@ async function openDetailsModal(mangaId, fallbackData) {
   }
 
   const modal = document.getElementById('details-modal');
-  if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  if (modal) { modal.style.display = 'flex'; document.body.classList.add('modal-open'); }
 }
 
 function closeDetailsModal() {
   const modal = document.getElementById('details-modal');
   if (modal) modal.style.display = 'none';
-  document.body.style.overflow = '';
+  document.body.classList.remove('modal-open');
   currentDetailsMangaId = null;
   firstChapterIdForDetails = null;
 }
@@ -468,7 +468,7 @@ function openSearchModal() {
   const m = document.getElementById('search-modal');
   if (m) {
     m.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('modal-open');
     setTimeout(() => {
       const input = document.getElementById('search-input');
       if (input) input.focus();
@@ -483,9 +483,11 @@ function closeSearchModal() {
   const m = document.getElementById('search-modal');
   if (m) {
     m.style.display = 'none';
-    document.body.style.overflow = '';
+    document.body.classList.remove('modal-open');
     const box = document.getElementById('search-results');
     if (box) box.innerHTML = '';
+    const input = document.getElementById('search-input');
+    if (input) input.value = '';
   }
 }
 
@@ -553,6 +555,7 @@ async function openFilterModal() {
   if (!m) return;
   await createGenreCheckboxes();
   m.style.display = 'flex';
+  document.body.classList.add('modal-open');
   setTimeout(()=> {
     const first = document.querySelector('#filter-checkboxes input[type="checkbox"]');
     if (first) first.focus();
@@ -562,50 +565,87 @@ async function openFilterModal() {
 function closeFilterModal() {
   const m = document.getElementById('filter-modal');
   if (m) m.style.display = 'none';
+  document.body.classList.remove('modal-open');
 }
 
 async function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
-  container.innerHTML = '<p class="muted">Loading genres…</p>';
 
-  if (allGenresKeySet.size === 0) {
-    try { await loadGenres(); } catch (e) { console.warn('loadGenres failed', e); }
-    if (allGenresKeySet.size === 0 && allMangaItems.length > 0) populateGenresFromMangaItems();
-    if (allGenresKeySet.size === 0 && !initDone) {
-      await new Promise(r => setTimeout(r, 160));
-      if (allGenresKeySet.size === 0) populateGenresFromMangaItems();
+  container.innerHTML = '';
+
+  // Extract all unique genres from all manga items and from genre API set
+  const allGenres = new Map(); // key -> display
+
+  // First use existing genreDisplayByKey (loaded from /genre API)
+  if (genreDisplayByKey && genreDisplayByKey.size > 0) {
+    for (const [key, display] of genreDisplayByKey.entries()) {
+      if (key) allGenres.set(key, display);
     }
   }
 
-  if (allGenresKeySet.size === 0) {
+  // Then populate from inline manga items (so we don't miss any)
+  allMangaItems.forEach(item => {
+    if (!item.genres || !Array.isArray(item.genres)) return;
+    item.genres.forEach(raw => {
+      if (!raw) return;
+      const display = normalizeGenreName(raw);
+      const key = genreKeyFromName(display);
+      if (!key) return;
+      if (!allGenres.has(key)) allGenres.set(key, display || key);
+    });
+  });
+
+  // If still empty, try loading from API (best-effort)
+  if (allGenres.size === 0) {
+    try {
+      await loadGenres();
+      for (const [k, v] of genreDisplayByKey.entries()) allGenres.set(k, v);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  if (allGenres.size === 0) {
     container.innerHTML = '<p class="muted">No genres available.</p>';
     return;
   }
 
-  const entries = Array.from(allGenresKeySet).map(k => ({ key: k, display: genreDisplayByKey.get(k) || k }));
+  // Convert to sorted array by display name
+  const entries = Array.from(allGenres.entries()).map(([key, display]) => ({ key, display }));
   entries.sort((a,b) => a.display.localeCompare(b.display, undefined, { sensitivity: 'base' }));
 
+  // Build checkboxes
   container.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'filter-checkbox-grid';
+
   entries.forEach(e => {
     const label = document.createElement('label');
     label.className = 'filter-checkbox';
+
     const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.value = e.key; cb.id = `filter_genre_${e.key}`;
+    cb.type = 'checkbox';
+    cb.value = e.key;                 // use normalized key as value
+    cb.id = `filter_genre_${e.key}`;
     if (activeGenreFilters.has(e.key)) cb.checked = true;
+
     cb.onchange = evt => {
-      if (evt.target.checked) activeGenreFilters.add(evt.target.value);
-      else activeGenreFilters.delete(evt.target.value);
+      const v = evt.target.value;
+      if (evt.target.checked) activeGenreFilters.add(v);
+      else activeGenreFilters.delete(v);
       updateGenreButtonStates();
     };
+
     const span = document.createElement('span');
     span.className = 'filter-label-text';
     span.textContent = e.display;
-    label.appendChild(cb); label.appendChild(span);
+
+    label.appendChild(cb);
+    label.appendChild(span);
     grid.appendChild(label);
   });
+
   container.appendChild(grid);
 
   const hint = document.createElement('div');
@@ -671,6 +711,16 @@ function clearFiltersFromModal() {
   }
 }
 
+/* ---- Reader close function (added) ---- */
+function closeReader() {
+  const modal = document.getElementById('reader-modal');
+  if (modal) modal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+  // reset reader state if desired
+  currentPages = [];
+  currentPageIndex = 0;
+}
+
 /* ---- Init ---- */
 async function init() {
   try {
@@ -714,3 +764,4 @@ window.openDedicatedReaderFromDetails = openDedicatedReaderFromDetails;
 window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
+window.closeReader = closeReader;
