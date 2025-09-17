@@ -12,6 +12,8 @@ let firstChapterIdForDetails = null;
 
 // --- Genre Set for Filter Modal ---
 let allGenresSet = new Set(); // Global Set to store unique genre names for filtering
+let genresLoadingPromise = null; // singleton promise for /genre fetch
+let initDone = false; // set to true at end of init()
 
 function proxifyUrl(url) {
   if (!url) return url;
@@ -127,53 +129,56 @@ async function searchTitles(q) {
   }
 }
 
-// --- REPLACED: loadGenres now populates allGenresSet from API (with fallback) ---
-async function loadGenres() {
-  try {
-    const data = await apiGet('/genre');
-    console.log('[app.js] Genre data loaded:', data);
-    if (data && Array.isArray(data.genre)) {
-      allGenresSet.clear();
-      data.genre.forEach(g => {
-        if (g) {
-          const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-          if (name) allGenresSet.add(name);
-        }
-      });
-      console.log('[app.js] allGenresSet populated from API:', allGenresSet);
-    } else if (Array.isArray(data)) {
-      allGenresSet.clear();
-      data.forEach(item => {
-        let name = null;
-        if (typeof item === 'string') name = item;
-        else if (item && (item.name || item.genre)) name = item.name || item.genre;
-        if (name) {
-          const cleaned = String(name).replace(/^genre\s*[:\-\s]*/i, '').trim();
-          if (cleaned) allGenresSet.add(cleaned);
-        }
-      });
-      console.log('[app.js] allGenresSet populated from array response:', allGenresSet);
-    } else {
-      console.warn('[app.js] Unexpected genre data format:', data);
-      populateGenresFromMangaItems();
+// --- loadGenres is a singleton (avoids concurrent fetch races) ---
+function loadGenres() {
+  if (genresLoadingPromise) return genresLoadingPromise; // return existing in-flight promise
+  genresLoadingPromise = (async () => {
+    try {
+      const data = await apiGet('/genre');
+      console.log('[app.js] Genre data loaded:', data);
+      // Different possible shapes: { genre: [...] } or array of strings or array of objects
+      if (data && Array.isArray(data.genre)) {
+        // API returned { genre: [...] }
+        data.genre.forEach(g => {
+          if (g) {
+            const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
+            if (name) allGenresSet.add(name);
+          }
+        });
+        console.log('[app.js] allGenresSet populated from API.genre:', allGenresSet);
+      } else if (Array.isArray(data)) {
+        // data is an array - try to extract string / object.name / object.genre
+        data.forEach(item => {
+          let name = null;
+          if (typeof item === 'string') name = item;
+          else if (item && (item.name || item.genre)) name = item.name || item.genre;
+          if (name) {
+            const cleaned = String(name).replace(/^genre\s*[:\-\s]*/i, '').trim();
+            if (cleaned) allGenresSet.add(cleaned);
+          }
+        });
+        console.log('[app.js] allGenresSet populated from array response:', allGenresSet);
+      } else {
+        console.warn('[app.js] Unexpected genre data format:', data);
+        // don't throw - leave caller to fallback to manga items
+      }
+    } catch (e) {
+      console.warn('[app.js] Failed to load genres from API endpoint', e);
+    } finally {
+      return allGenresSet;
     }
-  } catch (e) {
-    console.warn('[app.js] Failed to load genres from API endpoint', e);
-    populateGenresFromMangaItems();
-  }
+  })();
+  return genresLoadingPromise;
 }
-// --- END REPLACED ---
 
-// --- ADD THIS NEW FUNCTION ---
-// Helper to populate allGenresSet from existing manga data if /genre API fails
+// Helper to populate allGenresSet from existing manga data if /genre API fails or is empty
 function populateGenresFromMangaItems() {
   console.log('[app.js] Falling back to populating genres from manga items.');
-  allGenresSet.clear(); // Clear before re-populating
+  // DO NOT clear — we want to preserve any API-loaded genres
   allMangaItems.forEach(item => {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
         if (!g) return;
-        // sanitize same as details modal: remove leading "genre"
         const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
         if (name) allGenresSet.add(name);
       });
@@ -181,7 +186,6 @@ function populateGenresFromMangaItems() {
   });
   console.log('[app.js] allGenresSet populated from manga items (fallback):', allGenresSet);
 }
-// --- END ADD ---
 
 async function getInfo(mangaId) {
   if (!mangaId) return null;
@@ -629,7 +633,7 @@ async function loadMoreTrending() {
     }));
     trendingItems = trendingItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
-    // Update the global genre set and re-apply filters
+    // Update the global genre set and re-apply filters (note: updateAllGenresSet adds, does not clear)
     updateAllGenresSet();
     applyGenreFilters();
     if (data.pagination && data.pagination.length > 0) {
@@ -682,26 +686,26 @@ async function loadMoreUpdates() {
 
 /* ---- Genre Filter Functions (modal + checklist) ---- */
 
-// Make openFilterModal async and await checkbox creation, so the modal always shows data
 async function openFilterModal() {
   const m = document.getElementById('filter-modal');
   if (!m) return;
   // Ensure checkboxes are populated when modal opens (uses latest allMangaItems / API genres)
   await createGenreCheckboxes();
   m.style.display = 'flex';
-  // Optional: focus first checkbox for keyboard users
   setTimeout(() => {
     const firstCb = document.querySelector('#filter-checkboxes input[type="checkbox"]');
     if (firstCb) firstCb.focus();
   }, 50);
 }
+
 function closeFilterModal() {
   const m = document.getElementById('filter-modal');
   if (m) { m.style.display = 'none'; }
 }
+
 function toggleGenreFilters() { openFilterModal(); }
 
-// --- REPLACED: createGenreCheckboxes is now async and ensures genres are loaded ---
+// --- REPLACED: createGenreCheckboxes is now more robust in ensuring genres are available ---
 async function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
@@ -709,29 +713,38 @@ async function createGenreCheckboxes() {
   // Show loading placeholder immediately
   container.innerHTML = '<p class="muted">Loading genres...</p>';
 
-  // If no genres yet, try to fetch them (loadGenres will populate allGenresSet or fallback)
+  // --- KEY CHANGE: Ensure allGenresSet is populated reliably ---
+  // If the set is empty, prioritize fetching from the dedicated /genre API endpoint.
+  // If that fails or returns empty, fall back to extracting from the currently loaded manga items.
   if (allGenresSet.size === 0) {
+    console.log('[app.js] createGenreCheckboxes: allGenresSet is empty, attempting to populate...');
     try {
+      // Try loading genres from the API endpoint first
       await loadGenres();
+      console.log('[app.js] createGenreCheckboxes: loadGenres called, allGenresSet is now:', allGenresSet);
     } catch (e) {
-      // loadGenres has its own fallback; ignore error here
+      console.warn('[app.js] createGenreCheckboxes: loadGenres failed, trying fallback:', e);
+      // If API call fails, fallback to extracting from items
+      populateGenresFromMangaItems();
     }
-    // still empty? try populating from current manga list
+
+    // If it's STILL empty after both attempts, try fallback to manga items
     if (allGenresSet.size === 0) {
       populateGenresFromMangaItems();
     }
-  }
 
-  // If still empty after attempts, show message and return
-  if (allGenresSet.size === 0) {
-    container.innerHTML = '<p class="muted">No genres available.</p>';
-    console.log('[app.js] createGenreCheckboxes: allGenresSet is empty after load attempts.');
-    return;
+    // If it's STILL empty after attempts, log and show message
+    if (allGenresSet.size === 0) {
+      console.warn('[app.js] createGenreCheckboxes: allGenresSet is still empty after API and fallback attempts.');
+      container.innerHTML = '<p class="muted">No genres available from API or loaded manga.</p>';
+      return;
+    }
   }
+  // --- END KEY CHANGE ---
 
   // Clear previous content and build the checklist
   container.innerHTML = '';
-  const sortedGenres = Array.from(allGenresSet).sort((a, b) => a.localeCompare(b));
+  const sortedGenres = Array.from(allGenresSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   sortedGenres.forEach(genre => {
     const id = `filter_genre_${genre.replace(/[^a-z0-9]+/ig,'_').toLowerCase()}`;
     const label = document.createElement('label');
@@ -822,9 +835,12 @@ function clearFiltersFromModal() {
   }
 }
 
-/* ---- Utility: keep global genre set up-to-date ---- */
+/* ---- Utility: updateAllGenresSet adds genres (does NOT clear) */
 function updateAllGenresSet() {
-  allGenresSet.clear();
+  if (!allMangaItems || allMangaItems.length === 0) {
+    console.log('[app.js] updateAllGenresSet: allMangaItems empty; skipping add.');
+    return;
+  }
   allMangaItems.forEach(item => {
     if (item.genres && Array.isArray(item.genres)) {
       item.genres.forEach(g => {
@@ -834,20 +850,22 @@ function updateAllGenresSet() {
       });
     }
   });
-  console.log('[app.js] All genres set populated (updateAllGenresSet):', allGenresSet);
+  console.log('[app.js] All genres set updated (add-only):', allGenresSet);
 }
 
 /* ---- Init ---- */
 async function init() {
   try {
-    await loadGenres();
+    // Start loading genres ASAP (singleton) — this will be awaited by createGenreCheckboxes if user opens modal quickly
+    loadGenres().catch(()=>{ /* non-blocking here; callers will await if needed */ });
+
     const [t, f] = await Promise.all([getTrending(), getFeatured()]);
     trendingItems = Array.isArray(t) ? t : [];
     featuredItems = Array.isArray(f) ? f : [];
     allMangaItems = [...trendingItems, ...featuredItems];
 
     // If API didn't populate genres earlier, ensure our global set includes items' genres
-    if (allGenresSet.size === 0) updateAllGenresSet();
+    if (allGenresSet.size === 0) populateGenresFromMangaItems();
 
     filteredMangaItems = [...allMangaItems];
     renderTrending(allMangaItems);
@@ -858,6 +876,8 @@ async function init() {
     console.error('init failed', e);
     renderTrending([]);
     renderUpdates([]);
+  } finally {
+    initDone = true;
   }
 }
 
