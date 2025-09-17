@@ -11,7 +11,7 @@ let currentDetailsMangaId = null;
 let firstChapterIdForDetails = null;
 
 // --- Genre Set for Filter Modal ---
-let allGenresSet = new Set(); // New: Store all unique genres globally
+let allGenresSet = new Set(); // Store all unique genres globally
 
 function proxifyUrl(url) {
   if (!url) return url;
@@ -67,6 +67,8 @@ async function apiGet(path, opts = {}) {
     throw err;
   }
 }
+
+/* ---- FETCHERS (direct to GOMANGA-API) ---- */
 
 async function getTrending() {
   try {
@@ -185,6 +187,8 @@ async function getChapterPages(mangaId, chapterId) {
   }
 }
 
+/* ---- UI rendering ---- */
+
 function renderTrending(items) {
   const list = document.getElementById('manga-list');
   if (!list) { console.warn('Missing container #manga-list'); return; }
@@ -221,6 +225,7 @@ function renderUpdates(items) {
   });
 }
 
+// --- MODIFIED: Load all chapter pages and render them as a long strip in the popup ---
 async function loadChapterPages(mangaId, chapterId) {
   console.log(`[app.js] Loading pages for chapter ${chapterId} of manga ${mangaId} (Popup)`);
   const arr = await getChapterPages(mangaId, chapterId);
@@ -229,6 +234,7 @@ async function loadChapterPages(mangaId, chapterId) {
   updateReaderImage();
 }
 
+// --- MODIFIED: Update the reader image area in the popup to show a long strip ---
 function updateReaderImage() {
   const stage = document.querySelector('#reader-modal .reader-stage');
   if (!stage) {
@@ -300,6 +306,7 @@ function closeReader() {
   document.body.style.overflow = '';
 }
 
+/* ---- Details Modal (Enhanced) ---- */
 async function openDetailsModal(mangaId, fallbackData) {
   console.log(`[app.js] Opening details modal for manga: ${mangaId}`);
   const mangaData = await getInfo(mangaId) || fallbackData || null;
@@ -461,6 +468,7 @@ function openDedicatedReaderFromDetails() {
   window.location.href = url.toString();
 }
 
+/* Search UI & helpers */
 function debounce(fn, wait) {
   let t;
   return function (...args) {
@@ -497,24 +505,9 @@ async function searchManga() {
 }
 
 const searchMangaDebounced = debounce(searchManga, 420);
-
 function loadMoreSearch() { showStatus('Load more not available for search.', true); }
-
-function openSearchModal() {
-  const m = document.getElementById('search-modal');
-  if (m) {
-    m.style.display = 'flex';
-    setTimeout(() => document.getElementById('search-input')?.focus(), 100);
-  }
-}
-
-function closeSearchModal() {
-  const m = document.getElementById('search-modal');
-  if (m) {
-    m.style.display = 'none';
-    document.getElementById('search-results').innerHTML = '';
-  }
-}
+function openSearchModal() { const m = document.getElementById('search-modal'); if (m) { m.style.display = 'flex'; setTimeout(() => document.getElementById('search-input')?.focus(), 100); } }
+function closeSearchModal() { const m = document.getElementById('search-modal'); if (m) { m.style.display = 'none'; document.getElementById('search-results').innerHTML = ''; } }
 
 function createObserver(targetId, callback) {
   const el = document.getElementById(targetId);
@@ -542,6 +535,8 @@ async function loadMoreTrending() {
     }));
     trendingItems = trendingItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
+    // Update the global genre set and re-apply filters
+    updateAllGenresSet();
     applyGenreFilters();
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
@@ -575,6 +570,8 @@ async function loadMoreUpdates() {
     }));
     featuredItems = featuredItems.concat(more);
     allMangaItems = [...trendingItems, ...featuredItems];
+    // Update global genre set after loading more updates
+    updateAllGenresSet();
     renderUpdates(featuredItems); // Only render updates section
     if (data.pagination && data.pagination.length > 0) {
       const totalPages = data.pagination[data.pagination.length - 1];
@@ -589,15 +586,21 @@ async function loadMoreUpdates() {
   isLoadingUpdates = false;
 }
 
-/* ---- Updated Genre Filter Functions ---- */
+/* ---- Genre Filter Functions (modal + checklist) ---- */
+
 function toggleGenreFilters() { openFilterModal(); }
 
 function openFilterModal() {
   const m = document.getElementById('filter-modal');
   if (!m) return;
-  // Ensure checkboxes are populated when modal opens
+  // Ensure checkboxes are populated when modal opens (uses latest allMangaItems)
   createGenreCheckboxes();
   m.style.display = 'flex';
+  // Optional: focus first checkbox for keyboard users
+  setTimeout(() => {
+    const firstCb = document.querySelector('#filter-checkboxes input[type="checkbox"]');
+    if (firstCb) firstCb.focus();
+  }, 50);
 }
 
 function closeFilterModal() {
@@ -605,15 +608,14 @@ function closeFilterModal() {
   if (m) { m.style.display = 'none'; }
 }
 
-// --- Modified to use the global allGenresSet ---
+// Build the checkbox list inside the filter modal
 function createGenreCheckboxes() {
   const container = document.getElementById('filter-checkboxes');
   if (!container) return;
-
   // Clear previous content
   container.innerHTML = '';
 
-  // Check if we have genres to display
+  // If we have no genres yet, indicate loading/no-genres
   if (allGenresSet.size === 0) {
     container.innerHTML = '<p class="muted">No genres available.</p>';
     return;
@@ -634,7 +636,6 @@ function createGenreCheckboxes() {
     cb.type = 'checkbox';
     cb.id = id;
     cb.value = genre;
-    // Set checkbox state based on active filters
     if (activeGenreFilters.has(genre)) cb.checked = true;
 
     cb.onchange = (e) => {
@@ -643,7 +644,7 @@ function createGenreCheckboxes() {
       } else {
         activeGenreFilters.delete(genre);
       }
-      // No need to call updateGenreButtonStates here as it's only for modal sync
+      // keep in-modal state in sync via checkboxes themselves
     };
 
     const span = document.createElement('span');
@@ -656,12 +657,21 @@ function createGenreCheckboxes() {
 }
 
 function updateGenreButtonStates() {
-  // This function is primarily for syncing modal checkboxes if they were open
-  // It's less critical now, but kept for potential future use or if modal stays open during filtering
+  // Sync modal checkboxes with active filters
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
   checkboxes.forEach(cb => {
     cb.checked = activeGenreFilters.has(cb.value);
   });
+
+  // Update active filters text if UI element exists
+  const activeFiltersEl = document.getElementById('active-filters');
+  if (activeFiltersEl) {
+    if (activeGenreFilters.size > 0) {
+      activeFiltersEl.textContent = `Active filters: ${Array.from(activeGenreFilters).join(', ')}`;
+    } else {
+      activeFiltersEl.textContent = '';
+    }
+  }
 }
 
 function applyGenreFilters() {
@@ -687,18 +697,34 @@ function applyGenreFilters() {
 function applyFilterFromModal() {
   closeFilterModal();
   applyGenreFilters();
+  updateGenreButtonStates();
 }
 
 function clearFiltersFromModal() {
   activeGenreFilters.clear();
-  updateGenreButtonStates(); // Sync modal checkboxes
+  updateGenreButtonStates();
   applyGenreFilters();
   // Uncheck UI checkboxes in the modal
   const checkboxes = document.querySelectorAll('#filter-checkboxes input[type="checkbox"]');
   checkboxes.forEach(cb => cb.checked = false);
 }
 
-/* ---- Modified Init to Populate Global Genre Set ---- */
+/* ---- Utility: keep global genre set up-to-date ---- */
+function updateAllGenresSet() {
+  allGenresSet.clear();
+  allMangaItems.forEach(item => {
+    if (item.genres && Array.isArray(item.genres)) {
+      item.genres.forEach(g => {
+        if (!g) return;
+        const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
+        if (name) allGenresSet.add(name);
+      });
+    }
+  });
+  console.log('[app.js] All genres set populated:', allGenresSet);
+}
+
+/* ---- Init ---- */
 async function init() {
   try {
     await loadGenres();
@@ -707,19 +733,8 @@ async function init() {
     featuredItems = Array.isArray(f) ? f : [];
     allMangaItems = [...trendingItems, ...featuredItems];
 
-    // --- Populate the global genre set ---
-    allGenresSet.clear(); // Clear before re-populating
-    allMangaItems.forEach(item => {
-        if (item.genres && Array.isArray(item.genres)) {
-            item.genres.forEach(g => {
-                if (!g) return;
-                // Sanitize genre name consistently
-                const name = String(g).replace(/^genre\s*[:\-\s]*/i, '').trim();
-                if (name) allGenresSet.add(name);
-            });
-        }
-    });
-    console.log('[app.js] All genres set populated:', allGenresSet);
+    // Populate the global genre set
+    updateAllGenresSet();
 
     filteredMangaItems = [...allMangaItems];
     renderTrending(allMangaItems);
@@ -727,9 +742,8 @@ async function init() {
     createObserver('sentinel-trending', loadMoreTrending);
     createObserver('sentinel-updates', loadMoreUpdates);
 
-    // Populate filter modal checkboxes initially (they will be empty until data loads)
-    // createGenreCheckboxes(); // Called when modal opens instead
-
+    // NOTE: createGenreCheckboxes() is intentionally NOT called here.
+    // The filter modal populates itself when opened (openFilterModal calls it).
   } catch (e) {
     console.error('init failed', e);
     renderTrending([]);
@@ -739,6 +753,7 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', () => setTimeout(init, 120));
 
+/* expose functions used by inline HTML */
 window.searchManga = searchManga;
 window.searchMangaDebounced = searchMangaDebounced;
 window.openSearchModal = openSearchModal;
