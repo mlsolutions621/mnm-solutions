@@ -93,8 +93,14 @@
   <div class="search-modal" id="search-modal" aria-hidden="true" role="dialog" aria-label="Search manga">
     <button class="close" onclick="closeSearchModal()" aria-label="Close search dialog">×</button>
     <div class="search-box" role="document">
-      <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" aria-label="Search input" />
-      <div class="results" id="search-results" aria-live="polite"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="search-input" placeholder="Search for manga..." oninput="searchMangaDebounced()" aria-label="Search input" style="flex:1" />
+        <!-- Inline filter button so user can open filter modal from the search modal -->
+        <button class="btn btn-ghost" onclick="toggleGenreFilters()" aria-haspopup="dialog" title="Open filters">Filter</button>
+      </div>
+
+      <div class="results" id="search-results" style="margin-top:14px" aria-live="polite"></div>
+
       <div class="load-more-row" style="margin-top:10px;">
         <button class="btn btn-ghost" id="search-load-more" onclick="loadMoreSearch()">Load More</button>
       </div>
