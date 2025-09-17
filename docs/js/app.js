@@ -1,7 +1,7 @@
 /* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
    API root: https://gomanga-api.vercel.app/api   
 */
-const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api   ').replace(/\/+$/, '');
+const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE.trim() : 'https://gomanga-api.vercel.app/api'.trim()).replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], allMangaItems = [], filteredMangaItems = [];
@@ -1152,3 +1152,4 @@ window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
 window.closeReader = closeReader;
+
