@@ -28,6 +28,39 @@ let searchActiveGenreFilters = new Set();
 const API_RATE_LIMIT = 100; // milliseconds between calls
 let lastApiCall = 0;
 
+// --- Search paging state (for genre-filtered results) ---
+let searchPaging = {
+  sourceItems: [],     // full candidate list (either search results or allMangaItems)
+  matches: [],         // collected matches (objects or details) across pages
+  candidates: [],      // ids that require detail fetch (no inline genres)
+  scanIndex: 0,        // index in sourceItems scanned so far
+  page: 0,             // current loaded page count (0 = none)
+  pageSize: 10,        // results per page (tweakable)
+  finished: false,     // whether we've scanned all candidates
+  loading: false       // whether currently fetching details
+};
+
+// Batch helper: fetch details using getCachedMangaDetails() in groups
+async function fetchDetailsBatchedIds(ids, { batchSize = 8, delayMs = 700 } = {}) {
+  const map = new Map();
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    const batch = ids.slice(offset, offset + batchSize);
+    console.log(`[app.js] fetchDetailsBatchedIds: batch ${Math.floor(offset / batchSize) + 1} (${batch.length})`);
+    await Promise.all(batch.map(async id => {
+      try {
+        const d = await getCachedMangaDetails(id); // uses rate-limited API already
+        if (d) map.set(id, d);
+      } catch (err) {
+        console.warn('[app.js] fetchDetailsBatchedIds failed for', id, err);
+      }
+    }));
+    if (offset + batchSize < ids.length) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  return map; // id -> details
+}
+
 function proxifyUrl(url) {
   if (!url) return url;
   try {
@@ -470,6 +503,19 @@ function debounce(fn, wait) {
   return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), wait); };
 }
 
+// Helper to update search progress text
+function updateSearchProgress() {
+  const el = document.getElementById('search-progress');
+  if (!el) return;
+  const shown = (searchPaging.page === 0) ? 0 : Math.min(searchPaging.matches.length, searchPaging.page * searchPaging.pageSize);
+  const totalKnown = searchPaging.finished ? String(searchPaging.matches.length) : '?';
+  el.textContent = `Showing ${shown} of ${totalKnown} matches${searchPaging.loading ? ' — fetching more…' : ''}`;
+  const spinner = document.getElementById('search-load-more-spinner');
+  const loadBtn = document.getElementById('search-load-more');
+  if (spinner) spinner.style.display = (searchPaging.loading ? 'inline-block' : 'none');
+  if (loadBtn) loadBtn.disabled = !!searchPaging.loading;
+}
+
 // Populate search results from either API search or allMangaItems, and apply searchActiveGenreFilters if any
 async function populateSearchResultsFromFilters() {
   const box = document.getElementById('search-results');
@@ -484,112 +530,193 @@ async function populateSearchResultsFromFilters() {
       items = [...allMangaItems]; // Use full list if no search term
     }
 
-    // Apply filters ONLY if search filter is active
-    if (isSearchFilterActive && searchActiveGenreFilters.size > 0) {
-      console.log('[app.js] Applying search modal genre filters:', Array.from(searchActiveGenreFilters));
-
-      // If there is a search query: keep existing behavior (fetch full details for each search result)
-      if (q) {
-        const filteredItems = [];
-        for (const item of items) {
-          try {
-            const fullDetails = await getCachedMangaDetails(item.id);
-            if (fullDetails && fullDetails.genres && Array.isArray(fullDetails.genres)) {
-              const mangaGenreKeys = fullDetails.genres.map(genreKeyFromName).filter(Boolean);
-              const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-              if (matches) {
-                console.log('[app.js] Match found for', fullDetails.title, 'with genres:', mangaGenreKeys);
-                // Use fullDetails so we can show proper genres/images/etc
-                filteredItems.push(fullDetails);
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to get details for', item.id, e);
-            // fallback to list item if it has genres
-            if (item.genres && Array.isArray(item.genres)) {
-              const mangaGenreKeys = item.genres.map(genreKeyFromName).filter(Boolean);
-              const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-              if (matches) filteredItems.push(item);
-            }
-          }
-        }
-        items = filteredItems;
-      } else {
-        // No search query: we must ensure we check full details for items that lack inline genres
-        const filteredItems = [];
-        // iterate sequentially to avoid overwhelming API & to make use of cached details
-        for (const item of items) {
-          let mangaGenres = Array.isArray(item.genres) && item.genres.length ? item.genres : null;
-          if (!mangaGenres) {
-            try {
-              const fullDetails = await getCachedMangaDetails(item.id);
-              if (fullDetails && Array.isArray(fullDetails.genres) && fullDetails.genres.length) {
-                mangaGenres = fullDetails.genres;
-                // use fullDetails for display if it matches
-                const mangaGenreKeys = mangaGenres.map(genreKeyFromName).filter(Boolean);
-                const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-                if (matches) {
-                  console.log('[app.js] Match found for (details) ', fullDetails.title, 'with genres:', mangaGenreKeys);
-                  filteredItems.push(fullDetails);
-                  continue; // matched, next item
-                } else {
-                  continue; // not matched, next item
-                }
-              } else {
-                mangaGenres = [];
-              }
-            } catch (e) {
-              console.warn('Failed to load details for', item.id, e);
-              mangaGenres = [];
-            }
-          }
-          // if we have inline genres, check them
-          const mangaGenreKeys = (mangaGenres || item.genres || []).map(genreKeyFromName).filter(Boolean);
-          console.log('[app.js] Manga genres for', item.title, ':', mangaGenreKeys);
-          const matches = mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
-          if (matches) {
-            console.log('[app.js] Match found for', item.title, 'with genres:', mangaGenreKeys);
-            filteredItems.push(item);
-          }
-        }
-        items = filteredItems;
+    // If no active search-genre filters -> just display (non-paged) results normally
+    if (!isSearchFilterActive || searchActiveGenreFilters.size === 0) {
+      // Simple render: show all items (or search results)
+      if (!items || items.length === 0) {
+        box.innerHTML = '<p class="muted">No results found.</p>';
+        const loadBtn = document.getElementById('search-load-more'); if (loadBtn) loadBtn.style.display = 'none';
+        const progress = document.getElementById('search-progress'); if (progress) progress.textContent = '';
+        return;
       }
-    }
-
-    if (!items || items.length === 0) {
-      box.innerHTML = '<p class="muted">No results found.</p>';
-      console.log('[app.js] No items after filtering');
+      box.innerHTML = '';
+      items.forEach(m => {
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.src = m.image || m.imageUrl || '';
+        img.alt = m.title || '';
+        img.title = m.title || '';
+        img.style.cursor = 'pointer';
+        img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
+        box.appendChild(img);
+      });
+      // hide load more when not filtering
+      const loadBtn = document.getElementById('search-load-more');
+      if (loadBtn) loadBtn.style.display = 'none';
+      const progress = document.getElementById('search-progress');
+      if (progress) progress.textContent = '';
       return;
     }
 
-    console.log('[app.js] Items after filtering:', items.length);
+    // --- PAGED FILTERED FLOW ---
+    // initialize paging if first page or source changed (simple heuristic: if q changed or source array length changed)
+    const maybeReset = (searchPaging.sourceItems.length !== items.length) || (searchPaging.sourceItems[0] && items[0] && searchPaging.sourceItems[0].id !== items[0].id) || (q !== (window._lastSearchQuery || ''));
+    if (maybeReset) {
+      searchPaging.sourceItems = items;
+      searchPaging.matches = [];
+      searchPaging.candidates = [];
+      searchPaging.scanIndex = 0;
+      searchPaging.page = 0;
+      searchPaging.finished = false;
+      searchPaging.loading = false;
+      window._lastSearchQuery = q || '';
+      updateSearchProgress();
+    }
 
-    box.innerHTML = '';
-    items.forEach(m => {
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      img.src = m.image || m.imageUrl || '';
-      img.alt = m.title || '';
-      img.title = m.title || '';
-      img.style.cursor = 'pointer';
-      img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
-      box.appendChild(img);
-    });
+    // Helper to scan items until we have at least desiredCount new matches or we've exhausted the list
+    async function fillMatchesToCount(desiredCount) {
+      const src = searchPaging.sourceItems;
+      // First pass: use inline genres
+      while (searchPaging.scanIndex < src.length && searchPaging.matches.length < desiredCount) {
+        const it = src[searchPaging.scanIndex++];
+        const inlineGenres = Array.isArray(it.genres) && it.genres.length ? it.genres : null;
+        if (inlineGenres) {
+          const keys = inlineGenres.map(genreKeyFromName).filter(Boolean);
+          if (keys.some(k => searchActiveGenreFilters.has(k))) {
+            searchPaging.matches.push(it);
+          }
+        } else {
+          // mark for later detail fetching
+          searchPaging.candidates.push(it.id);
+        }
+      }
+
+      // If still short, fetch some candidate details in small batches (but only what we need)
+      while (searchPaging.matches.length < desiredCount && (searchPaging.candidates.length > 0)) {
+        // Decide how many candidate IDs to try in this round — fetch up to batchSize but you can tune
+        const batchSize = Math.min(10, searchPaging.candidates.length);
+        const batchIds = searchPaging.candidates.splice(0, batchSize); // remove them from candidate list
+        searchPaging.loading = true;
+        updateSearchProgress();
+
+        const detailsMap = await fetchDetailsBatchedIds(batchIds, { batchSize: 6, delayMs: 600 });
+        // Evaluate fetched details
+        for (const id of batchIds) {
+          const d = detailsMap.get(id);
+          if (!d) continue;
+          const keys = Array.isArray(d.genres) ? d.genres.map(genreKeyFromName).filter(Boolean) : [];
+          if (keys.some(k => searchActiveGenreFilters.has(k))) {
+            // prefer pushing the full detail object for better display
+            searchPaging.matches.push(d);
+            if (searchPaging.matches.length >= desiredCount) break;
+          }
+        }
+
+        searchPaging.loading = false;
+        updateSearchProgress();
+      }
+
+      // If we've scanned all source items and there's no more candidates to process, mark finished
+      if (searchPaging.scanIndex >= src.length && searchPaging.candidates.length === 0) {
+        searchPaging.finished = true;
+      }
+      updateSearchProgress();
+    }
+
+    // Load next page (one-based)
+    async function loadNextPage() {
+      const nextPage = searchPaging.page + 1;
+      const desiredTotal = nextPage * searchPaging.pageSize;
+      await fillMatchesToCount(desiredTotal);
+      searchPaging.page = nextPage;
+      // Render the first (page * pageSize) matches
+      renderMatchesPage();
+    }
+
+    // Render current pages worth of matches
+    function renderMatchesPage() {
+      const totalToShow = Math.min(searchPaging.page * searchPaging.pageSize, searchPaging.matches.length);
+      if (totalToShow === 0) {
+        box.innerHTML = '<p class="muted">No results found.</p>';
+        return;
+      }
+      box.innerHTML = '';
+      for (let i = 0; i < totalToShow; i++) {
+        const m = searchPaging.matches[i];
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.src = m.image || m.imageUrl || '';
+        img.alt = m.title || '';
+        img.title = m.title || '';
+        img.style.cursor = 'pointer';
+        img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
+        box.appendChild(img);
+      }
+
+      // Manage Load More button
+      const loadBtn = document.getElementById('search-load-more');
+      if (loadBtn) {
+        if (searchPaging.finished && totalToShow >= searchPaging.matches.length) {
+          loadBtn.style.display = 'none';
+        } else {
+          loadBtn.style.display = 'block';
+        }
+      }
+      updateSearchProgress();
+    }
+
+    // If we haven't loaded any page yet -> load first page
+    if (searchPaging.page === 0) {
+      await loadNextPage();
+    } else {
+      // Already have some pages loaded -> just render existing
+      renderMatchesPage();
+    }
+
+    // expose loadNextPage so window.loadMoreSearch can call it
+    window._loadNextSearchPage = loadNextPage;
+
   } catch (e) {
     console.warn('populateSearchResultsFromFilters failed', e);
     if (box) box.innerHTML = '<p class="muted">Error loading results.</p>';
   } finally {
-    // Always hide load more button in search results
+    // ensure the load more button exists and is connected
     const loadBtn = document.getElementById('search-load-more');
-    if (loadBtn) loadBtn.style.display = 'none';
+    if (loadBtn) {
+      loadBtn.onclick = async () => {
+        const spinner = document.getElementById('search-load-more-spinner');
+        const text = document.getElementById('search-load-more-text');
+        if (spinner) spinner.style.display = 'inline-block';
+        if (text) text.textContent = 'Loading…';
+        loadBtn.disabled = true;
+        try {
+          if (typeof window._loadNextSearchPage === 'function') {
+            await window._loadNextSearchPage();
+          } else {
+            // If paging not initialized, call populate to init
+            await populateSearchResultsFromFilters();
+          }
+        } finally {
+          if (spinner) spinner.style.display = 'none';
+          if (text) text.textContent = 'Load more';
+          loadBtn.disabled = false;
+          updateSearchProgress();
+        }
+      };
+    }
   }
 }
 
 // Debounced search input handler (typing)
-const performSearch = debounce(() => { populateSearchResultsFromFilters(); }, 420);
+const performSearch = debounce(() => { 
+  // Reset search paging when new search is performed
+  searchPaging.page = 0;
+  populateSearchResultsFromFilters(); 
+}, 420);
 
 // Main function used by search input's oninput (keeps compatibility)
 async function searchManga() {
+  searchPaging.page = 0; // Reset to first page on new search
   await populateSearchResultsFromFilters();
 }
 
@@ -603,6 +730,7 @@ function openSearchModal() {
       const input = document.getElementById('search-input');
       if (input) input.focus();
       // populate results (empty query => shows all or filtered)
+      searchPaging.page = 0; // Reset to first page
       populateSearchResultsFromFilters();
       // Update filter modal checkboxes to reflect current search filters
       updateGenreButtonStates();
@@ -616,12 +744,24 @@ function closeSearchModal() {
     m.style.display = 'none';
     document.body.style.overflow = ''; // Restore background scroll
     const box = document.getElementById('search-results');
+    const pagination = document.getElementById('search-pagination');
+    const progress = document.getElementById('search-progress');
     if (box) box.innerHTML = '';
+    if (pagination) pagination.innerHTML = '';
+    if (progress) progress.textContent = '';
     const input = document.getElementById('search-input');
     if (input) input.value = '';
     // Reset search filter state when closing
     isSearchFilterActive = false;
     searchActiveGenreFilters.clear();
+    // Reset search pagination state
+    searchPaging.sourceItems = [];
+    searchPaging.matches = [];
+    searchPaging.candidates = [];
+    searchPaging.scanIndex = 0;
+    searchPaging.page = 0;
+    searchPaging.finished = false;
+    searchPaging.loading = false;
   }
 }
 
@@ -890,6 +1030,7 @@ function applyFilterFromModal() {
     console.log('[app.js] Filter applied while search modal open — refreshing search results.');
     console.log('[app.js] Current search filters:', Array.from(searchActiveGenreFilters));
     isSearchFilterActive = searchActiveGenreFilters.size > 0;
+    searchPaging.page = 0; // Reset to first page when applying filters
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, apply filters to the main trending view
@@ -907,6 +1048,7 @@ function clearFiltersFromModal() {
     console.log('[app.js] Filters cleared while search modal open — refreshing search results.');
     searchActiveGenreFilters.clear();
     isSearchFilterActive = false;
+    searchPaging.page = 0; // Reset to first page
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, clear main filters and reset trending view
@@ -948,6 +1090,12 @@ async function init() {
     renderUpdates(featuredItems);
     createObserver('sentinel-trending', loadMoreTrending);
     createObserver('sentinel-updates', loadMoreUpdates);
+    
+    // Add event listener for search input
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', performSearch);
+    }
   } catch (e) {
     console.error('init failed', e);
     renderTrending([]);
@@ -968,7 +1116,32 @@ window.closeSearchModal = closeSearchModal;
 window.changeChapter = function(){ const raw = document.getElementById('chapter')?.value; if(!raw) return; const c = JSON.parse(raw); loadChapterPages(c.mangaId, c.chapterId); };
 window.loadMoreTrending = loadMoreTrending;
 window.loadMoreUpdates = loadMoreUpdates;
-window.loadMoreSearch = function(){ showStatus('Load more not available for search.', true); };
+window.loadMoreSearch = async function() {
+  const loadBtn = document.getElementById('search-load-more');
+  if (loadBtn) {
+    const spinner = document.getElementById('search-load-more-spinner');
+    const text = document.getElementById('search-load-more-text');
+    if (spinner) spinner.style.display = 'inline-block';
+    if (text) text.textContent = 'Loading…';
+    loadBtn.disabled = true;
+  }
+  try {
+    if (typeof window._loadNextSearchPage === 'function') {
+      await window._loadNextSearchPage();
+    } else {
+      // If paging not initialized, call populate to init
+      await populateSearchResultsFromFilters();
+    }
+  } finally {
+    const loadBtn = document.getElementById('search-load-more');
+    const spinner = document.getElementById('search-load-more-spinner');
+    const text = document.getElementById('search-load-more-text');
+    if (spinner) spinner.style.display = 'none';
+    if (text) text.textContent = 'Load more';
+    if (loadBtn) loadBtn.disabled = false;
+    updateSearchProgress();
+  }
+};
 window.openDedicatedReader = function(){ const sel = document.getElementById('chapter'); const raw = sel?.value; if(!raw) return showStatus('No chapter selected', true); const {mangaId, chapterId} = JSON.parse(raw); const basePath = window.location.pathname.includes('/docs/') ? window.location.origin + '/mnm-solutions/docs/' : window.location.origin + '/mnm-solutions/'; const url = new URL('read.html', basePath); url.searchParams.set('mangaId', mangaId); url.searchParams.set('chapterId', chapterId); url.searchParams.set('page', 0); window.location.href = url.toString(); };
 window.toggleGenreFilters = toggleGenreFilters;
 window.clearGenreFilters = clearFiltersFromModal;
