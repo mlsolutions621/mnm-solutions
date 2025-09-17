@@ -1,7 +1,7 @@
 /* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
-   API root: https://gomanga-api.vercel.app/api
+   API root: https://gomanga-api.vercel.app/api   
 */
-const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api').replace(/\/+$/, '');
+const API_BASE = (window.MR_BASE_OVERRIDE ? window.MR_BASE_OVERRIDE : 'https://gomanga-api.vercel.app/api   ').replace(/\/+$/, '');
 
 let currentManga = null, currentPages = [], currentPageIndex = 0;
 let trendingItems = [], featuredItems = [], allMangaItems = [], filteredMangaItems = [];
@@ -435,8 +435,10 @@ async function populateSearchResultsFromFilters() {
       console.log('[app.js] Applying search modal genre filters:', searchActiveGenreFilters);
       items = items.filter(m => {
         if (!m.genres || !Array.isArray(m.genres)) return false;
-        const keys = m.genres.map(g => genreKeyFromName(g)).filter(Boolean);
-        return keys.some(k => searchActiveGenreFilters.has(k));
+        // Normalize all manga genres to lowercase keys for comparison
+        const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
+        // Check if any of the manga's genre keys match active filters
+        return mangaGenreKeys.some(k => searchActiveGenreFilters.has(k));
       });
     }
 
@@ -737,8 +739,10 @@ function applyGenreFilters() {
   }
   const filtered = allMangaItems.filter(m => {
     if (!m.genres || !Array.isArray(m.genres)) return false;
-    const keys = m.genres.map(g => genreKeyFromName(g)).filter(Boolean);
-    return keys.some(k => activeGenreFilters.has(k));
+    // Normalize all manga genres to lowercase keys for comparison
+    const mangaGenreKeys = m.genres.map(genreKeyFromName).filter(Boolean);
+    // Check if any of the manga's genre keys match active filters
+    return mangaGenreKeys.some(k => activeGenreFilters.has(k));
   });
   renderTrending(filtered);
 }
