@@ -725,6 +725,8 @@ function openSearchModal() {
   const m = document.getElementById('search-modal');
   if (m) {
     m.style.display = 'flex';
+   // 2. IMMEDIATELY set aria-hidden to false so the focused element isn't hidden
+    m.setAttribute('aria-hidden', 'false'); // Add this line
     document.body.style.overflow = 'hidden'; // Prevent background scroll
     setTimeout(() => {
       const input = document.getElementById('search-input');
@@ -741,6 +743,8 @@ function openSearchModal() {
 function closeSearchModal() {
   const m = document.getElementById('search-modal');
   if (m) {
+   // 1. Set aria-hidden to true FIRST
+    m.setAttribute('aria-hidden', 'true'); // Add/Ensure this line
     m.style.display = 'none';
     document.body.style.overflow = ''; // Restore background scroll
     const box = document.getElementById('search-results');
@@ -1152,4 +1156,5 @@ window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
 window.closeReader = closeReader;
+
 
