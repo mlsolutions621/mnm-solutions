@@ -2,10 +2,13 @@
 // Uses the same proxy logic as app.js
 
 // --- Configuration and Globals ---
+// --- 1. Add Development Flag ---
+const IS_DEVELOPMENT = false; // Set to false for production to hide logs
+
 // IMPORTANT: Fix the trailing spaces in the default API URL
 const API_BASE = (window.MR_BASE_OVERRIDE
   ? window.MR_BASE_OVERRIDE.trim() // Trim spaces from the override URL
-  : 'https://gomanga-api.vercel.app/api' // Fixed default URL
+  : 'https://gomanga-api.vercel.app/api'.trim() // Fixed default URL (removed trailing spaces)
 ).replace(/\/+$/, '');
 
 let currentMangaId = null;
@@ -27,7 +30,8 @@ function proxifyUrl(url) {
     const fullPath = path + (u.search || '');
     return `${API_BASE}${fullPath}`;
   } catch (e) {
-    console.warn('[read.js] Failed to proxify URL:', url, e);
+    // --- 2. Conditionally log proxifyUrl errors ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] Failed to proxify URL:', url, e);
     return url;
   }
 }
@@ -36,7 +40,8 @@ function proxifyUrl(url) {
 async function apiGet(path, opts = {}) {
   const normalizedPath = path.startsWith('/') ? path : '/' + path;
   const url = `${API_BASE}${normalizedPath}`;
-  console.log('[read.js] Fetching (via proxy):', url);
+  // --- 3. Conditionally log API requests ---
+  if (IS_DEVELOPMENT) console.log('[read.js] Fetching (via proxy):', url);
 
   try {
     const res = await fetch(url, Object.assign({
@@ -47,18 +52,22 @@ async function apiGet(path, opts = {}) {
     if (!res.ok) {
       const txt = await res.text().catch(() => '<no-body>');
       const err = `HTTP ${res.status} ${res.statusText} - ${url} - ${txt.slice(0, 200)}`;
+      // Keep error logging for critical failures
       console.error('[read.js] API Error:', err);
       throw new Error(err);
     }
     const json = await res.json().catch(async e => {
       const txt = await res.text().catch(() => '<no-body>');
       const msg = 'Invalid JSON: ' + txt.slice(0, 200);
+      // Keep error logging for critical failures
       console.error('[read.js] JSON Error:', msg);
       throw new Error(msg);
     });
-    console.log('[read.js] API Response:', url /*, json*/);
+    // --- 4. Conditionally log API responses ---
+    if (IS_DEVELOPMENT) console.log('[read.js] API Response:', url /*, json*/);
     return json;
   } catch (err) {
+    // Keep error logging for critical failures
     console.error('[read.js] apiGet failed', err);
     throw err;
   }
@@ -67,18 +76,21 @@ async function apiGet(path, opts = {}) {
 // --- Fetch chapter page URLs ---
 async function getChapterPages(mangaId, chapterId) {
   if (!mangaId || !chapterId) {
-    console.warn('[read.js] getChapterPages: Missing mangaId or chapterId');
+    // --- 5. Conditionally log missing parameters ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] getChapterPages: Missing mangaId or chapterId');
     return [];
   }
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`);
     if (!data.imageUrls || !Array.isArray(data.imageUrls)) {
-      console.warn('[read.js] Invalid API response for chapter pages', data);
+      // --- 6. Conditionally log invalid API response ---
+      if (IS_DEVELOPMENT) console.warn('[read.js] Invalid API response for chapter pages', data);
       return [];
     }
     return data.imageUrls.map(url => proxifyUrl(url));
   } catch (e) {
-    console.warn('[read.js] getChapterPages error', e);
+    // --- 7. Conditionally log getChapterPages errors ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] getChapterPages error', e);
     return [];
   }
 }
@@ -86,18 +98,21 @@ async function getChapterPages(mangaId, chapterId) {
 // --- Fetch manga details (for chapters list) ---
 async function getMangaDetails(mangaId) {
   if (!mangaId) {
-    console.warn('[read.js] getMangaDetails: Missing mangaId');
+    // --- 8. Conditionally log missing parameter ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] getMangaDetails: Missing mangaId');
     return null;
   }
   try {
     const data = await apiGet(`/manga/${encodeURIComponent(mangaId)}`);
     if (!data.id) {
-      console.warn('[read.js] Manga not found or invalid API response', data);
+      // --- 9. Conditionally log invalid API response ---
+      if (IS_DEVELOPMENT) console.warn('[read.js] Manga not found or invalid API response', data);
       return null;
     }
     return data;
   } catch (e) {
-    console.warn('[read.js] getMangaDetails error', e);
+    // --- 10. Conditionally log getMangaDetails errors ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] getMangaDetails error', e);
     return null;
   }
 }
@@ -106,6 +121,7 @@ async function getMangaDetails(mangaId) {
 function renderLongStrip(imageUrls) {
   const container = document.getElementById('reader-content');
   if (!container) {
+    // Keep error logging for critical failures (missing DOM elements)
     console.error('[read.js] Reader content container not found');
     alert('Reader error: Content container missing.');
     return;
@@ -145,7 +161,8 @@ function renderLongStrip(imageUrls) {
   });
 
   container.appendChild(stripWrapper);
-  console.log(`[read.js] Rendered ${imageUrls.length} images in long strip.`);
+  // --- 11. Conditionally log successful rendering ---
+  if (IS_DEVELOPMENT) console.log(`[read.js] Rendered ${imageUrls.length} images in long strip.`);
   // Apply current zoom level after rendering
   setStripZoom(stripZoomLevel);
 }
@@ -156,6 +173,7 @@ function populateChapterSelector(chaptersArray, currentChapterId) {
   const selector = document.getElementById('chapter-selector');
   const titleDisplay = document.getElementById('manga-title-display');
   if (!selector) {
+    // Keep error logging for critical failures (missing DOM elements)
     console.error('[read.js] Chapter selector element not found');
     return;
   }
@@ -186,7 +204,8 @@ function populateChapterSelector(chaptersArray, currentChapterId) {
   });
 
   selector.disabled = false;
-  console.log(`[read.js] Chapter selector populated with ${reversedChapters.length} chapters.`);
+  // --- 12. Conditionally log successful population ---
+  if (IS_DEVELOPMENT) console.log(`[read.js] Chapter selector populated with ${reversedChapters.length} chapters.`);
 }
 
 // --- MODIFIED: Zoom for Long Strip ---
@@ -206,13 +225,15 @@ function setStripZoom(level) {
 
 function zoomIn() {
   stripZoomLevel = Math.min(stripZoomLevel + 0.25, 3);
-  console.log('[read.js] Zooming strip in. New level:', stripZoomLevel);
+  // --- 13. Conditionally log zoom in ---
+  if (IS_DEVELOPMENT) console.log('[read.js] Zooming strip in. New level:', stripZoomLevel);
   setStripZoom(stripZoomLevel);
 }
 
 function zoomOut() {
   stripZoomLevel = Math.max(stripZoomLevel - 0.25, 0.5);
-  console.log('[read.js] Zooming strip out. New level:', stripZoomLevel);
+  // --- 14. Conditionally log zoom out ---
+  if (IS_DEVELOPMENT) console.log('[read.js] Zooming strip out. New level:', stripZoomLevel);
   setStripZoom(stripZoomLevel);
 }
 
@@ -220,18 +241,21 @@ function zoomOut() {
 function toggleFullscreen() {
   const container = document.getElementById('reader-container');
   if (!container) {
-    console.warn('[read.js] Reader container not found');
+    // --- 15. Conditionally log missing container ---
+    if (IS_DEVELOPMENT) console.warn('[read.js] Reader container not found');
     return;
   }
 
   if (!isFullscreen) {
     container.classList.add('fullscreen');
     document.body.style.overflow = 'hidden';
-    console.log('[read.js] Entered fullscreen mode');
+    // --- 16. Conditionally log entering fullscreen ---
+    if (IS_DEVELOPMENT) console.log('[read.js] Entered fullscreen mode');
   } else {
     container.classList.remove('fullscreen');
     document.body.style.overflow = '';
-    console.log('[read.js] Exited fullscreen mode');
+    // --- 17. Conditionally log exiting fullscreen ---
+    if (IS_DEVELOPMENT) console.log('[read.js] Exited fullscreen mode');
   }
   isFullscreen = !isFullscreen;
 }
@@ -298,11 +322,13 @@ async function onChapterSelect() {
 // --- MODIFIED: Load the currently selected chapter (for Long Strip) ---
 async function loadCurrentChapter() {
   if (!currentMangaId || !currentChapterId) {
+    // Keep error logging for critical failures (missing IDs)
     console.error('[read.js] Cannot load chapter: Missing mangaId or chapterId');
     return;
   }
 
-  console.log(`[read.js] Loading chapter ${currentChapterId} for manga ${currentMangaId} (Long Strip)`);
+  // --- 18. Conditionally log loading start ---
+  if (IS_DEVELOPMENT) console.log(`[read.js] Loading chapter ${currentChapterId} for manga ${currentMangaId} (Long Strip)`);
   try {
     // Show loading indicator
     const container = document.getElementById('reader-content');
@@ -314,7 +340,8 @@ async function loadCurrentChapter() {
 
     if (currentPages.length === 0) {
       const msg = 'Failed to load pages for this chapter.';
-      console.warn('[read.js]', msg);
+      // --- 19. Conditionally log page load failure ---
+      if (IS_DEVELOPMENT) console.warn('[read.js]', msg);
       if (container) {
         container.innerHTML = `<p style="color:red;">${msg}</p>`;
       }
@@ -328,6 +355,7 @@ async function loadCurrentChapter() {
     // setStripZoom is called inside renderLongStrip now
 
   } catch (e) {
+    // Keep error logging for critical failures
     console.error('[read.js] Failed to load chapter', e);
     const msg = 'Failed to load chapter. Please try again.';
     const container = document.getElementById('reader-content');
@@ -341,7 +369,8 @@ async function loadCurrentChapter() {
 
 // --- Initialize reader ---
 async function initReader() {
-  console.log('[read.js] Initializing reader (Long Strip with Chapter Selector)...');
+  // --- 20. Conditionally log initialization start ---
+  if (IS_DEVELOPMENT) console.log('[read.js] Initializing reader (Long Strip with Chapter Selector)...');
   const params = new URLSearchParams(window.location.search);
   currentMangaId = params.get('mangaId');
   currentChapterId = params.get('chapterId');
@@ -349,16 +378,19 @@ async function initReader() {
 
   if (!currentMangaId || !currentChapterId) {
     const msg = 'Invalid reader parameters. Missing mangaId or chapterId.';
+    // Keep error logging for critical failures (invalid parameters)
     console.error('[read.js]', msg);
     alert(msg);
     return;
   }
 
-  console.log('[read.js] Parameters - Manga:', currentMangaId, 'Chapter:', currentChapterId);
+  // --- 21. Conditionally log parameters ---
+  if (IS_DEVELOPMENT) console.log('[read.js] Parameters - Manga:', currentMangaId, 'Chapter:', currentChapterId);
 
   try {
     // --- 1. Fetch manga details to get chapters list ---
-    console.log('[read.js] Fetching manga details for chapter list and title...');
+    // --- 22. Conditionally log fetching details ---
+    if (IS_DEVELOPMENT) console.log('[read.js] Fetching manga details for chapter list and title...');
     const mangaDetails = await getMangaDetails(currentMangaId);
     if (!mangaDetails) {
       throw new Error('Could not load manga details.');
@@ -378,6 +410,7 @@ async function initReader() {
     await loadCurrentChapter();
 
   } catch (e) {
+    // Keep error logging for critical failures
     console.error('[read.js] Failed to initialize reader', e);
     alert('Failed to initialize reader. Check console for details.');
   }
@@ -385,7 +418,8 @@ async function initReader() {
 
 // --- Start ---
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('[read.js] DOM Content Loaded. Starting init...');
+  // --- 23. Conditionally log DOMContentLoaded ---
+  if (IS_DEVELOPMENT) console.log('[read.js] DOM Content Loaded. Starting init...');
   initReader();
 });
 
