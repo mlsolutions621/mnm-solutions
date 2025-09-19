@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -6,106 +6,56 @@
   <title>Reading - MangaStream</title>
   <link rel="icon" href="logo.png" type="image/png" />
   <meta name="theme-color" content="#0b0b10" />
-    <script>
-      // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
-      window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
-    </script>
-  <link rel="stylesheet" href="css/style.css">
-  <style>
-    .reader-container {
-      padding: 20px;
-      max-width: 100%;
-      margin: 0 auto;
-    }
-    .reader-toolbar {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .reader-toolbar button, .reader-toolbar select {
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-    }
-    .reader-toolbar button {
-      background: var(--accent);
-      color: white;
-    }
-    .reader-toolbar select {
-      background: rgba(255,255,255,.05);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,.07);
-    }
-    .reader-content {
-      background: #000;
-      border-radius: 12px;
-      overflow: auto;
-      display: flex;
-      justify-content: center;
-      padding: 20px;
-      max-height: 80vh;
-    }
-    .reader-content img {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      display: block;
-      object-fit: contain;
-    }
-    .fullscreen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 9999;
-      background: #000;
-      padding: 0;
-      margin: 0;
-      border-radius: 0;
-    }
-    .fullscreen .reader-content {
-      max-height: 100vh;
-      border-radius: 0;
-    }
-    .fullscreen .reader-toolbar {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10000;
-      background: rgba(0,0,0,0.7);
-      padding: 8px;
-      border-radius: 20px;
-    }
-    #manga-title-display {
-      font-weight: bold;
-      margin-right: 10px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reader.css">
+  <script>
+    // CORRECT - Use your actual .workers.dev URL (NO SPACES!)
+    window.MR_BASE_OVERRIDE = 'https://manganmanhwa-solutions.mlsolutions621.workers.dev/proxy';
+  </script>
 </head>
 <body>
   <div class="reader-container" id="reader-container">
     <div class="reader-toolbar">
       <span id="manga-title-display">Loading...</span>
       
-      <button onclick="prevChapter()">◀ Prev Chapter</button>
+      <div class="chapter-nav">
+        <button onclick="prevChapter()">
+          <span class="btn-icon">◀</span>
+          <span class="btn-text">Prev</span>
+        </button>
+        
+        <label for="chapter-selector">Chapter:</label>
+        <select id="chapter-selector" onchange="onChapterSelect()"></select>
+        
+        <button onclick="nextChapter()">
+          <span class="btn-text">Next</span>
+          <span class="btn-icon">▶</span>
+        </button>
+      </div>
       
-      <label for="chapter-selector">Chapter:</label>
-      <select id="chapter-selector" onchange="onChapterSelect()"></select>
+      <div class="zoom-controls">
+        <button onclick="zoomIn()">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Zoom In</span>
+        </button>
+        <button onclick="zoomOut()">
+          <span class="btn-icon">🔎</span>
+          <span class="btn-text">Zoom Out</span>
+        </button>
+      </div>
       
-      <button onclick="nextChapter()">Next Chapter ▶</button>
-      
-      <button onclick="zoomIn()">🔍 Zoom In</button>
-      <button onclick="zoomOut()">🔎 Zoom Out</button>
-      <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
-      <button onclick="window.history.back()">← Back</button>
+      <div class="reader-actions">
+        <button onclick="toggleFullscreen()">
+          <span class="btn-icon">⛶</span>
+          <span class="btn-text">Fullscreen</span>
+        </button>
+        <button class="back-btn" onclick="window.history.back()">
+          <span class="btn-icon">←</span>
+          <span class="btn-text">Back</span>
+        </button>
+      </div>
     </div>
     <div class="reader-content" id="reader-content">
       <img id="reader-image" alt="Manga page" />
