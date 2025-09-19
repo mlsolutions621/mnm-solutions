@@ -1,10 +1,3 @@
-Okay, here is the complete, remodified `app.js` file incorporating the fixes for the `aria-hidden` warning and the performance improvements for genre filtering, based on the code snippets you've shared.
-
-This version ensures functions used by inline HTML handlers (like `onclick="applyFilterFromModal()"`) are correctly defined and exposed on the `window` object. It uses the accessibility helpers (`openModalById`, `closeModalById`) and includes the client-side genre indexing logic.
-
-Please replace the content of your existing `app.js` file with this code.
-
-```javascript
 /* js/app.js - MangaStream Frontend (Remodified)
 - Accessibility-friendly modal open/close helpers
 - Client-side genre index for fast genre filtering
@@ -24,6 +17,8 @@ let isLoadingSearch = false, isLoadingTrending = false, isLoadingUpdates = false
 let allGenresKeySet = new Set(); // normalized keys
 let genreDisplayByKey = new Map(); // key -> display name
 let genresLoadingPromise = null;
+let activeGenreFilters = new Set(); // keys (normalized lowercase) - for main view
+
 // --- Client-Side Genre Indexing ---
 // Map: genreKey (string) -> Set of manga IDs (string)
 const genreIndex = new Map();
@@ -36,7 +31,7 @@ const mangaDetailsCache = new Map();
 
 // State for search modal to manage its own filters
 let isSearchFilterActive = false;
-let searchActiveGenreFilters = new Set();
+let searchActiveGenreFilters = new Set(); // keys (normalized lowercase) - for search view
 
 // --- Accessibility Helpers for Modals ---
 // Store the element that opened the modal for focus restoration
@@ -1348,9 +1343,6 @@ window.closeFilterModal = closeFilterModal;
 // --- Updated applyFilterFromModal function ---
 // This function is called when the user clicks "Apply" in the filter modal.
 // It should close the filter modal and apply the selected filters.
-// --- Updated applyFilterFromModal function ---
-// This function is called when the user clicks "Apply" in the filter modal.
-// It should close the filter modal and apply the selected filters.
 function applyFilterFromModal() {
   // Use the new accessibility helper to close the filter modal
   closeModalById("filter-modal"); // This replaces the old closeFilterModal()
@@ -1390,11 +1382,7 @@ function applyFilterFromModal() {
   // It's called when the modal opens or filters are cleared.
   // --- End Logic ---
 }
-
-// Make sure this function is exposed to the window object for inline onclick handlers
-window.applyFilterFromModal = applyFilterFromModal;
-// --- End Updated applyFilterFromModal function ---
+// --- Ensure it's exposed to the window object ---
+window.applyFilterFromModal = applyFilterFromModal; // <-- MAKE SURE THIS LINE IS PRESENT
 window.closeReader = closeReader;
 // --- End Init ---
-```
-
