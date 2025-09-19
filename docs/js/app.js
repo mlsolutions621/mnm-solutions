@@ -1348,6 +1348,9 @@ window.closeFilterModal = closeFilterModal;
 // --- Updated applyFilterFromModal function ---
 // This function is called when the user clicks "Apply" in the filter modal.
 // It should close the filter modal and apply the selected filters.
+// --- Updated applyFilterFromModal function ---
+// This function is called when the user clicks "Apply" in the filter modal.
+// It should close the filter modal and apply the selected filters.
 function applyFilterFromModal() {
   // Use the new accessibility helper to close the filter modal
   closeModalById("filter-modal"); // This replaces the old closeFilterModal()
@@ -1366,14 +1369,32 @@ function applyFilterFromModal() {
   } else {
     // If search modal is closed, apply filters to the main trending view
     console.log('[app.js] Filter applied — applying to main trending view.');
-    applyGenreFilters(); // This function should exist in your code
+    // Assuming applyGenreFilters exists and handles main view filtering
+    if (typeof applyGenreFilters === 'function') {
+        applyGenreFilters();
+    } else {
+        console.warn('[app.js] applyGenreFilters function not found. Falling back to basic filter logic.');
+        // Basic fallback logic if applyGenreFilters is missing
+        filteredMangaItems = allMangaItems.filter(m => {
+          if (activeGenreFilters.size === 0) return true;
+          if (!Array.isArray(m.genres) || m.genres.length === 0) return false;
+          return m.genres.some(g => {
+            const k = genreKeyFromName(g);
+            return k && activeGenreFilters.has(k);
+          });
+        });
+        renderTrending(filteredMangaItems);
+    }
   }
   // Note: updateGenreButtonStates() is not needed here as the modal is closing.
   // It's called when the modal opens or filters are cleared.
   // --- End Logic ---
 }
-// --- Ensure it's exposed to the window object ---
-window.applyFilterFromModal = applyFilterFromModal; // <-- MAKE SURE THIS LINE IS PRESENT
+
+// Make sure this function is exposed to the window object for inline onclick handlers
+window.applyFilterFromModal = applyFilterFromModal;
+// --- End Updated applyFilterFromModal function ---
 window.closeReader = closeReader;
 // --- End Init ---
 ```
+
