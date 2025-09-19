@@ -1,5 +1,16 @@
-/* js/app.js - MangaStream Frontend (Directly using GOMANGA-API endpoints)
-API root: https://gomanga-api.vercel.app/api
+Okay, here is the complete, remodified `app.js` file incorporating the fixes for the `aria-hidden` warning and the performance improvements for genre filtering, based on the code snippets you've shared.
+
+This version ensures functions used by inline HTML handlers (like `onclick="applyFilterFromModal()"`) are correctly defined and exposed on the `window` object. It uses the accessibility helpers (`openModalById`, `closeModalById`) and includes the client-side genre indexing logic.
+
+Please replace the content of your existing `app.js` file with this code.
+
+```javascript
+/* js/app.js - MangaStream Frontend (Remodified)
+- Accessibility-friendly modal open/close helpers
+- Client-side genre index for fast genre filtering
+- Concurrent details fetching for deferred candidates
+- Ensures functions used by inline onclick handlers are exposed on window
+- Keeps rate-limiting and caching already present in your original code
 */
 
 // --- Configuration and State ---
@@ -75,12 +86,12 @@ function openModalById(modalId, focusSelector = null) {
     elementToFocus = modal;
     // Ensure modal itself is focusable if it needs to receive focus as a fallback
     if (modal.tabIndex === -1 || modal.tabIndex >= 0) {
-                // Already focusable
-            } else {
-                modal.tabIndex = -1; // Make it programmatically focusable temporarily
-                // Optional: Remove tabindex on close if it was added here
-                modal._tempTabIndexAdded = true;
-            }
+        // Already focusable
+    } else {
+        modal.tabIndex = -1; // Make it programmatically focusable temporarily
+        // Optional: Remove tabindex on close if it was added here
+        modal._tempTabIndexAdded = true;
+    }
   }
 
   if (elementToFocus) {
@@ -160,23 +171,18 @@ function closeModalById(modalId) {
  * @returns {HTMLElement|null} - The first focusable element, or null if none found.
  */
 function getFirstFocusableElement(container) {
+  if (!container) return null;
   // Define selectors for focusable elements
   // Note: :not([disabled]) is often implied for form controls, but explicit check is safer
   // Exclude elements with negative tabindex explicitly
-  const focusableSelector =
+  const selectors =
     'button:not([disabled]), [href]:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), [contenteditable]:not([contenteditable="false"])';
 
-  const focusableElements = container.querySelectorAll(focusableSelector);
-
-  // Iterate through the NodeList to find the first *visible* and *enabled* element
-  for (let i = 0; i < focusableElements.length; i++) {
-    const element = focusableElements[i];
-    // Basic visibility check (doesn't cover all cases like opacity, visibility, etc.)
-    if (element.offsetWidth > 0 && element.offsetHeight > 0) {
-       // Check if it's not actually disabled (some elements like div[tabindex] might not have 'disabled')
-       if (element.disabled === false || element.disabled === undefined) {
-          return element;
-       }
+  const nodes = Array.from(container.querySelectorAll(selectors));
+  for (const n of nodes) {
+    // Basic visible check (offsetWidth/Height or getClientRects)
+    if (n.offsetWidth > 0 || n.offsetHeight > 0 || n.getClientRects().length > 0) {
+      return n;
     }
   }
   return null; // No focusable element found
@@ -511,10 +517,20 @@ function openSearchModal() {
 }
 
 function closeSearchModal() {
+  // Reset search state before closing for a clean next-open
+  isSearchFilterActive = false;
+  searchActiveGenreFilters.clear();
+  searchPaging = { sourceItems: [], matches: [], candidates: [], scanIndex: 0, page: 0, finished: false, loading: false };
+  const box = document.getElementById('search-results');
+  if (box) box.innerHTML = '';
+  const prog = document.getElementById('search-progress');
+  if (prog) prog.textContent = '';
+
   // Use accessibility helper
   closeModalById("search-modal");
 }
 
+// Keep the older-named helpers for compatibility with existing HTML onclick handlers
 function openFilterModal() {
   populateFilterCheckboxes();
   // Use accessibility helper
@@ -642,7 +658,7 @@ async function searchManga(q) {
   }
 }
 
-// Debounced search function
+// Debounced search function (using a simple implementation)
 let searchTimeout;
 function performSearch() {
   clearTimeout(searchTimeout);
@@ -664,8 +680,9 @@ function performSearch() {
     } finally {
       isLoadingSearch = false;
     }
-  }, 300);
+  }, 300); // 300ms delay
 }
+window.searchMangaDebounced = performSearch; // Expose for inline use if needed
 
 function updateSearchProgress() {
   const el = document.getElementById('search-progress');
@@ -1270,12 +1287,12 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(init, 120));
 /* expose to window (for inline HTML) */
 window.searchManga = searchManga;
 window.performSearch = performSearch;
-window.searchMangaDebounced = performSearch; // Use the debounced version
+// window.searchMangaDebounced = performSearch; // Already assigned above
 window.openSearchModal = openSearchModal;
 window.closeSearchModal = closeSearchModal;
-window.changeChapter = function() {
+window.changeChapter = function(){
   const raw = document.getElementById('chapter')?.value;
-  if (!raw) return;
+  if(!raw) return;
   const c = JSON.parse(raw);
   loadChapterPages(c.mangaId, c.chapterId);
 };
@@ -1307,11 +1324,11 @@ window.loadMoreSearch = async function() {
     updateSearchProgress();
   }
 };
-window.openDedicatedReader = function() {
+window.openDedicatedReader = function(){
   const sel = document.getElementById('chapter');
   const raw = sel?.value;
-  if (!raw) return showStatus('No chapter selected', true);
-  const { mangaId, chapterId } = JSON.parse(raw);
+  if(!raw) return showStatus('No chapter selected', true);
+  const {mangaId, chapterId} = JSON.parse(raw);
   const basePath = window.location.pathname.includes('/docs/') ?
     window.location.origin + '/mnm-solutions/docs/' :
     window.location.origin + '/mnm-solutions/';
@@ -1328,6 +1345,35 @@ window.closeDetailsModal = closeDetailsModal;
 window.openDedicatedReaderFromDetails = openDedicatedReaderFromDetails;
 window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
-window.applyFilterFromModal = applyFilterFromModal;
+// --- Updated applyFilterFromModal function ---
+// This function is called when the user clicks "Apply" in the filter modal.
+// It should close the filter modal and apply the selected filters.
+function applyFilterFromModal() {
+  // Use the new accessibility helper to close the filter modal
+  closeModalById("filter-modal"); // This replaces the old closeFilterModal()
+
+  // --- Logic previously inside applyFilterFromModal ---
+  const searchModal = document.getElementById('search-modal');
+  const isSearchOpen = searchModal && window.getComputedStyle(searchModal).display !== 'none';
+
+  if (isSearchOpen) {
+    // If search modal is open, activate search filters and refresh search results
+    console.log('[app.js] Filter applied while search modal open — refreshing search results.');
+    console.log('[app.js] Current search filters:', Array.from(searchActiveGenreFilters));
+    isSearchFilterActive = searchActiveGenreFilters.size > 0;
+    searchPaging.page = 0; // Reset to first page when applying filters
+    populateSearchResultsFromFilters();
+  } else {
+    // If search modal is closed, apply filters to the main trending view
+    console.log('[app.js] Filter applied — applying to main trending view.');
+    applyGenreFilters(); // This function should exist in your code
+  }
+  // Note: updateGenreButtonStates() is not needed here as the modal is closing.
+  // It's called when the modal opens or filters are cleared.
+  // --- End Logic ---
+}
+// --- Ensure it's exposed to the window object ---
+window.applyFilterFromModal = applyFilterFromModal; // <-- MAKE SURE THIS LINE IS PRESENT
 window.closeReader = closeReader;
 // --- End Init ---
+```
