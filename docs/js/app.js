@@ -29,13 +29,15 @@ const API_RATE_LIMIT = 100; // milliseconds between calls
 let lastApiCall = 0;
 
 // --- Search paging state (for genre-filtered results) ---
+// Added fields: currentPage (1-based), pageSize
 let searchPaging = {
   sourceItems: [],     // full candidate list (either search results or allMangaItems)
   matches: [],         // collected matches (objects or details) across pages
   candidates: [],      // ids that require detail fetch (no inline genres)
   scanIndex: 0,        // index in sourceItems scanned so far
-  page: 0,             // current loaded page count (0 = none)
-  pageSize: 10,        // results per page (tweakable)
+  page: 0,             // number of pages loaded (how many pages of matches have been accumulated)
+  currentPage: 1,      // currently displayed page (1-based)
+  pageSize: 10,        // results per page (tweakable: set to 10 or 15)
   finished: false,     // whether we've scanned all candidates
   loading: false       // whether currently fetching details
 };
@@ -507,7 +509,7 @@ function debounce(fn, wait) {
 function updateSearchProgress() {
   const el = document.getElementById('search-progress');
   if (!el) return;
-  const shown = (searchPaging.page === 0) ? 0 : Math.min(searchPaging.matches.length, searchPaging.page * searchPaging.pageSize);
+  const shown = (searchPaging.page === 0) ? 0 : Math.min(searchPaging.matches.length, searchPaging.currentPage * searchPaging.pageSize);
   const totalKnown = searchPaging.finished ? String(searchPaging.matches.length) : '?';
   el.textContent = `Showing ${shown} of ${totalKnown} matches${searchPaging.loading ? ' — fetching more…' : ''}`;
   const spinner = document.getElementById('search-load-more-spinner');
@@ -516,13 +518,222 @@ function updateSearchProgress() {
   if (loadBtn) loadBtn.disabled = !!searchPaging.loading;
 }
 
-// Populate search results from either API search or allMangaItems, and apply searchActiveGenreFilters if any
+/* ---- New: Pagination helpers for filtered search ---- */
+
+// Render page numbers UI (three-number window + arrows) into #search-pagination (create if missing)
+function renderSearchPagination() {
+  // Remove/hide legacy Load More button
+  const loadBtn = document.getElementById('search-load-more');
+  if (loadBtn) loadBtn.style.display = 'none';
+
+  let pager = document.getElementById('search-pagination');
+  const container = document.getElementById('search-results');
+  if (!container) return;
+
+  if (!pager) {
+    pager = document.createElement('div');
+    pager.id = 'search-pagination';
+    pager.style.marginTop = '12px';
+    pager.style.display = 'flex';
+    pager.style.gap = '8px';
+    pager.style.alignItems = 'center';
+    pager.style.justifyContent = 'center';
+    // place pager after results
+    container.insertAdjacentElement('afterend', pager);
+  }
+
+  // Determine page numbers to show
+  const cp = Math.max(1, (searchPaging.currentPage || 1));
+  const knownPages = Math.max(1, Math.ceil(searchPaging.matches.length / searchPaging.pageSize));
+  const finished = !!searchPaging.finished;
+  // compute start so that cp is centered when possible
+  let start = Math.max(1, cp - 1);
+  let end = start + 2;
+  if (finished && end > knownPages) {
+    end = knownPages;
+    start = Math.max(1, end - 2);
+  }
+  // If matches less than 3 pages, adjust
+  if (!finished && searchPaging.matches.length === 0) {
+    // nothing loaded yet, show 1,2,3
+    start = Math.max(1, cp - 1);
+    end = start + 2;
+  }
+
+  // Build pager HTML
+  pager.innerHTML = '';
+
+  const createButton = (text, cls, disabled = false, onClick = null) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost';
+    btn.style.padding = '6px 10px';
+    btn.style.borderRadius = '8px';
+    btn.textContent = text;
+    if (disabled) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+    }
+    if (onClick) btn.addEventListener('click', onClick);
+    if (cls) btn.classList.add(cls);
+    return btn;
+  };
+
+  // left arrow
+  const left = createButton('←', null, cp === 1, async () => {
+    if (cp > 1) {
+      await gotoSearchPage(cp - 1);
+    }
+  });
+  pager.appendChild(left);
+
+  // three number buttons
+  for (let n = start; n <= end; n++) {
+    const isActive = n === cp;
+    const btn = createButton(String(n), isActive ? 'active-page' : null, false, async () => {
+      await gotoSearchPage(n);
+    });
+    if (isActive) {
+      btn.style.background = 'linear-gradient(90deg, var(--accent), var(--accent-2))';
+      btn.style.color = '#fff';
+      btn.style.fontWeight = '700';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--muted)';
+      btn.style.fontWeight = '600';
+    }
+    pager.appendChild(btn);
+  }
+
+  // right arrow (may be disabled if finished && at last page)
+  const rightDisabled = (finished && cp >= knownPages);
+  const right = createButton('→', null, rightDisabled, async () => {
+    // If the next page hasn't been prepared yet, load next page using existing logic
+    await gotoSearchPage(cp + 1);
+  });
+  pager.appendChild(right);
+}
+
+// Ensure we have at least desiredTotal matches (scans list and fetches deferred details as needed)
+async function fillMatchesToCount(desiredCount) {
+  const src = searchPaging.sourceItems;
+  // First pass: use inline genres
+  while (searchPaging.scanIndex < src.length && searchPaging.matches.length < desiredCount) {
+    const it = src[searchPaging.scanIndex++];
+    const inlineGenres = Array.isArray(it.genres) && it.genres.length ? it.genres : null;
+    if (inlineGenres) {
+      const keys = inlineGenres.map(genreKeyFromName).filter(Boolean);
+      // NOTE: this uses ANY matching genre logic (change to every() if you need AND)
+      if (keys.some(k => searchActiveGenreFilters.has(k))) {
+        searchPaging.matches.push(it);
+      }
+    } else {
+      // mark for later detail fetching
+      searchPaging.candidates.push(it.id);
+    }
+  }
+
+  // If still short, fetch some candidate details in small batches (but only what we need)
+  while (searchPaging.matches.length < desiredCount && (searchPaging.candidates.length > 0)) {
+    const batchSize = Math.min(10, searchPaging.candidates.length);
+    const batchIds = searchPaging.candidates.splice(0, batchSize); // remove them from candidate list
+    searchPaging.loading = true;
+    updateSearchProgress();
+
+    const detailsMap = await fetchDetailsBatchedIds(batchIds, { batchSize: 6, delayMs: 600 });
+    // Evaluate fetched details
+    for (const id of batchIds) {
+      const d = detailsMap.get(id);
+      if (!d) continue;
+      const keys = Array.isArray(d.genres) ? d.genres.map(genreKeyFromName).filter(Boolean) : [];
+      if (keys.some(k => searchActiveGenreFilters.has(k))) {
+        // prefer pushing the full detail object for better display
+        searchPaging.matches.push(d);
+        if (searchPaging.matches.length >= desiredCount) break;
+      }
+    }
+
+    searchPaging.loading = false;
+    updateSearchProgress();
+  }
+
+  // If we've scanned all source items and there's no more candidates to process, mark finished
+  if (searchPaging.scanIndex >= src.length && searchPaging.candidates.length === 0) {
+    searchPaging.finished = true;
+  }
+  updateSearchProgress();
+}
+
+// Ensure the search engine has loaded enough matches so that page `pageNumber` (1-based) can be displayed
+async function ensureMatchesForPage(pageNumber) {
+  if (!pageNumber || pageNumber < 1) pageNumber = 1;
+  const desiredTotal = pageNumber * searchPaging.pageSize;
+  // If we already have enough matches, we can return immediately
+  if (searchPaging.matches.length >= desiredTotal) return;
+  // Otherwise, attempt to fill until desiredTotal (this will scan / fetch deferred)
+  await fillMatchesToCount(desiredTotal);
+  // update how many pages have been loaded (page count = ceil(matches / pageSize))
+  searchPaging.page = Math.floor((searchPaging.matches.length + searchPaging.pageSize - 1) / searchPaging.pageSize);
+}
+
+// Display the specified page (1-based). Will ensure matches are available, loading if required.
+async function gotoSearchPage(pageNumber) {
+  if (!pageNumber || pageNumber < 1) pageNumber = 1;
+  // If requested page is the same, just re-render
+  if (pageNumber === searchPaging.currentPage && searchPaging.matches.length > 0) {
+    renderMatchesForPage(pageNumber);
+    return;
+  }
+  // Try to ensure matches
+  await ensureMatchesForPage(pageNumber);
+  // If there are still not enough matches and we've finished scanning, clamp pageNumber
+  const knownPages = Math.max(1, Math.ceil(searchPaging.matches.length / searchPaging.pageSize));
+  if (searchPaging.finished && pageNumber > knownPages) pageNumber = knownPages;
+  searchPaging.currentPage = pageNumber;
+  renderMatchesForPage(pageNumber);
+}
+
+// Render the given page (1-based) from the accumulated matches
+function renderMatchesForPage(pageNumber) {
+  const box = document.getElementById('search-results');
+  if (!box) return;
+  const start = (pageNumber - 1) * searchPaging.pageSize;
+  const end = start + searchPaging.pageSize;
+  const slice = searchPaging.matches.slice(start, end);
+  box.innerHTML = '';
+  if (!slice || slice.length === 0) {
+    // If we have no matches and we've finished searching, show "No results"
+    if (searchPaging.finished) box.innerHTML = '<p class="muted">No results found.</p>';
+    else box.innerHTML = '<p class="muted">Loading results…</p>'; // transient
+    renderSearchPagination(); // still render pager so user can try next
+    return;
+  }
+  slice.forEach(m => {
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = m.image || m.imageUrl || '';
+    img.alt = m.title || '';
+    img.title = m.title || '';
+    img.style.cursor = 'pointer';
+    img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
+    box.appendChild(img);
+  });
+  // Update pager
+  renderSearchPagination();
+  updateSearchProgress();
+}
+
+/* ---- populateSearchResultsFromFilters (UPDATED to use pagination) ---- */
 async function populateSearchResultsFromFilters() {
   const box = document.getElementById('search-results');
   if (!box) return;
   const q = document.getElementById('search-input')?.value?.trim();
   try {
+    // show loading while preparing
     box.innerHTML = '<p class="muted">Loading results…</p>';
+    // reset pager area (we will populate it if needed)
+    const oldPager = document.getElementById('search-pagination');
+    if (oldPager) oldPager.remove();
+
     let items = [];
     if (q) {
       items = await searchTitles(q);
@@ -530,12 +741,27 @@ async function populateSearchResultsFromFilters() {
       items = [...allMangaItems]; // Use full list if no search term
     }
 
+    // Update active filters display
+    const activeFiltersEl = document.getElementById('search-active-filters');
+    if (activeFiltersEl) {
+      if (searchActiveGenreFilters.size > 0) {
+        const names = Array.from(searchActiveGenreFilters).map(k => genreDisplayByKey.get(k) || k);
+        activeFiltersEl.textContent = `Active: ${names.join(', ')}`;
+      } else {
+        activeFiltersEl.textContent = '';
+      }
+    }
+
     // If no active search-genre filters -> just display (non-paged) results normally
     if (!isSearchFilterActive || searchActiveGenreFilters.size === 0) {
+      // Clean up any previous pagination
+      const pager = document.getElementById('search-pagination');
+      if (pager) pager.remove();
+      const loadBtn = document.getElementById('search-load-more'); if (loadBtn) loadBtn.style.display = 'none';
+
       // Simple render: show all items (or search results)
       if (!items || items.length === 0) {
         box.innerHTML = '<p class="muted">No results found.</p>';
-        const loadBtn = document.getElementById('search-load-more'); if (loadBtn) loadBtn.style.display = 'none';
         const progress = document.getElementById('search-progress'); if (progress) progress.textContent = '';
         return;
       }
@@ -550,16 +776,12 @@ async function populateSearchResultsFromFilters() {
         img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
         box.appendChild(img);
       });
-      // hide load more when not filtering
-      const loadBtn = document.getElementById('search-load-more');
-      if (loadBtn) loadBtn.style.display = 'none';
-      const progress = document.getElementById('search-progress');
-      if (progress) progress.textContent = '';
+      const progress = document.getElementById('search-progress'); if (progress) progress.textContent = '';
       return;
     }
 
-    // --- PAGED FILTERED FLOW ---
-    // initialize paging if first page or source changed (simple heuristic: if q changed or source array length changed)
+    // --- PAGED FILTERED FLOW (updated) ---
+    // initialize paging if first page or source changed (heuristic)
     const maybeReset = (searchPaging.sourceItems.length !== items.length) || (searchPaging.sourceItems[0] && items[0] && searchPaging.sourceItems[0].id !== items[0].id) || (q !== (window._lastSearchQuery || ''));
     if (maybeReset) {
       searchPaging.sourceItems = items;
@@ -567,143 +789,38 @@ async function populateSearchResultsFromFilters() {
       searchPaging.candidates = [];
       searchPaging.scanIndex = 0;
       searchPaging.page = 0;
+      searchPaging.currentPage = 1;
       searchPaging.finished = false;
       searchPaging.loading = false;
       window._lastSearchQuery = q || '';
+      // Ensure progress shows initial state
       updateSearchProgress();
     }
 
-    // Helper to scan items until we have at least desiredCount new matches or we've exhausted the list
-    async function fillMatchesToCount(desiredCount) {
-      const src = searchPaging.sourceItems;
-      // First pass: use inline genres
-      while (searchPaging.scanIndex < src.length && searchPaging.matches.length < desiredCount) {
-        const it = src[searchPaging.scanIndex++];
-        const inlineGenres = Array.isArray(it.genres) && it.genres.length ? it.genres : null;
-        if (inlineGenres) {
-          const keys = inlineGenres.map(genreKeyFromName).filter(Boolean);
-          if (keys.some(k => searchActiveGenreFilters.has(k))) {
-            searchPaging.matches.push(it);
-          }
-        } else {
-          // mark for later detail fetching
-          searchPaging.candidates.push(it.id);
-        }
-      }
+    // Prepare the first page (will scan inline genres and fetch small batches of details as needed)
+    await ensureMatchesForPage(1);
 
-      // If still short, fetch some candidate details in small batches (but only what we need)
-      while (searchPaging.matches.length < desiredCount && (searchPaging.candidates.length > 0)) {
-        // Decide how many candidate IDs to try in this round — fetch up to batchSize but you can tune
-        const batchSize = Math.min(10, searchPaging.candidates.length);
-        const batchIds = searchPaging.candidates.splice(0, batchSize); // remove them from candidate list
-        searchPaging.loading = true;
-        updateSearchProgress();
+    // Now render current page (1)
+    searchPaging.currentPage = 1;
+    renderMatchesForPage(1);
 
-        const detailsMap = await fetchDetailsBatchedIds(batchIds, { batchSize: 6, delayMs: 600 });
-        // Evaluate fetched details
-        for (const id of batchIds) {
-          const d = detailsMap.get(id);
-          if (!d) continue;
-          const keys = Array.isArray(d.genres) ? d.genres.map(genreKeyFromName).filter(Boolean) : [];
-          if (keys.some(k => searchActiveGenreFilters.has(k))) {
-            // prefer pushing the full detail object for better display
-            searchPaging.matches.push(d);
-            if (searchPaging.matches.length >= desiredCount) break;
-          }
-        }
-
-        searchPaging.loading = false;
-        updateSearchProgress();
-      }
-
-      // If we've scanned all source items and there's no more candidates to process, mark finished
-      if (searchPaging.scanIndex >= src.length && searchPaging.candidates.length === 0) {
-        searchPaging.finished = true;
-      }
-      updateSearchProgress();
-    }
-
-    // Load next page (one-based)
-    async function loadNextPage() {
-      const nextPage = searchPaging.page + 1;
-      const desiredTotal = nextPage * searchPaging.pageSize;
-      await fillMatchesToCount(desiredTotal);
-      searchPaging.page = nextPage;
-      // Render the first (page * pageSize) matches
-      renderMatchesPage();
-    }
-
-    // Render current pages worth of matches
-    function renderMatchesPage() {
-      const totalToShow = Math.min(searchPaging.page * searchPaging.pageSize, searchPaging.matches.length);
-      if (totalToShow === 0) {
-        box.innerHTML = '<p class="muted">No results found.</p>';
-        return;
-      }
-      box.innerHTML = '';
-      for (let i = 0; i < totalToShow; i++) {
-        const m = searchPaging.matches[i];
-        const img = document.createElement('img');
-        img.loading = 'lazy';
-        img.src = m.image || m.imageUrl || '';
-        img.alt = m.title || '';
-        img.title = m.title || '';
-        img.style.cursor = 'pointer';
-        img.onclick = () => { closeSearchModal(); openDetailsModal(m.id, m); };
-        box.appendChild(img);
-      }
-
-      // Manage Load More button
-      const loadBtn = document.getElementById('search-load-more');
-      if (loadBtn) {
-        if (searchPaging.finished && totalToShow >= searchPaging.matches.length) {
-          loadBtn.style.display = 'none';
-        } else {
-          loadBtn.style.display = 'block';
-        }
-      }
-      updateSearchProgress();
-    }
-
-    // If we haven't loaded any page yet -> load first page
-    if (searchPaging.page === 0) {
-      await loadNextPage();
-    } else {
-      // Already have some pages loaded -> just render existing
-      renderMatchesPage();
-    }
-
-    // expose loadNextPage so window.loadMoreSearch can call it
-    window._loadNextSearchPage = loadNextPage;
+    // Expose helper to allow "manual load next page" if needed by legacy code
+    window._loadNextSearchPage = async function() {
+      const next = (Math.floor(searchPaging.matches.length / searchPaging.pageSize) + 1);
+      await ensureMatchesForPage(next);
+      // increment page counter (how many pages are loaded)
+      searchPaging.page = Math.floor((searchPaging.matches.length + searchPaging.pageSize - 1) / searchPaging.pageSize);
+      // display next page
+      searchPaging.currentPage = next;
+      renderMatchesForPage(next);
+    };
 
   } catch (e) {
     console.warn('populateSearchResultsFromFilters failed', e);
     if (box) box.innerHTML = '<p class="muted">Error loading results.</p>';
   } finally {
-    // ensure the load more button exists and is connected
-    const loadBtn = document.getElementById('search-load-more');
-    if (loadBtn) {
-      loadBtn.onclick = async () => {
-        const spinner = document.getElementById('search-load-more-spinner');
-        const text = document.getElementById('search-load-more-text');
-        if (spinner) spinner.style.display = 'inline-block';
-        if (text) text.textContent = 'Loading…';
-        loadBtn.disabled = true;
-        try {
-          if (typeof window._loadNextSearchPage === 'function') {
-            await window._loadNextSearchPage();
-          } else {
-            // If paging not initialized, call populate to init
-            await populateSearchResultsFromFilters();
-          }
-        } finally {
-          if (spinner) spinner.style.display = 'none';
-          if (text) text.textContent = 'Load more';
-          loadBtn.disabled = false;
-          updateSearchProgress();
-        }
-      };
-    }
+    // no "Load more" button behavior when filters are active; pagination UI is used instead
+    updateSearchProgress();
   }
 }
 
@@ -711,6 +828,7 @@ async function populateSearchResultsFromFilters() {
 const performSearch = debounce(() => { 
   // Reset search paging when new search is performed
   searchPaging.page = 0;
+  searchPaging.currentPage = 1;
   populateSearchResultsFromFilters(); 
 }, 420);
 
@@ -764,6 +882,7 @@ function closeSearchModal() {
     searchPaging.candidates = [];
     searchPaging.scanIndex = 0;
     searchPaging.page = 0;
+    searchPaging.currentPage = 1;
     searchPaging.finished = false;
     searchPaging.loading = false;
   }
@@ -1035,6 +1154,7 @@ function applyFilterFromModal() {
     console.log('[app.js] Current search filters:', Array.from(searchActiveGenreFilters));
     isSearchFilterActive = searchActiveGenreFilters.size > 0;
     searchPaging.page = 0; // Reset to first page when applying filters
+    searchPaging.currentPage = 1;
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, apply filters to the main trending view
@@ -1053,6 +1173,7 @@ function clearFiltersFromModal() {
     searchActiveGenreFilters.clear();
     isSearchFilterActive = false;
     searchPaging.page = 0; // Reset to first page
+    searchPaging.currentPage = 1;
     populateSearchResultsFromFilters();
   } else {
     // If search modal is closed, clear main filters and reset trending view
@@ -1156,4 +1277,3 @@ window.openFilterModal = openFilterModal;
 window.closeFilterModal = closeFilterModal;
 window.applyFilterFromModal = applyFilterFromModal;
 window.closeReader = closeReader;
-
